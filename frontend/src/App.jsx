@@ -1,0 +1,127 @@
+import React from "react";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
+
+import Home from "./pages/Home";
+import SignIn from "./pages/SignIn";
+import SignUp from "./pages/SignUp";
+import CreatorDashboard from "./pages/dashboard/CreatorDashboard";
+import UserDashboard from "./pages/dashboard/UserDashboard";
+import Workshops from "./pages/Workshops";
+import WorkshopDetail from "./pages/WorkshopDetail";
+import Marketplace from "./pages/Marketplace";
+import ProductDetail from "./pages/ProductDetail";
+import AttendanceDashboard from "./pages/dashboard/AttendanceDashboard";
+import CreatorAnalytics from "./pages/dashboard/CreatorAnalytics";
+import UserAnalytics from "./pages/dashboard/UserAnalytics";
+import ProfileSettings from "./pages/ProfileSettings";
+
+import { AuthContext } from "./context/AuthContext";
+
+// Placeholder Pages
+const Categories = () => (
+  <div className="min-h-screen flex items-center justify-center bg-ink text-cream text-3xl font-semibold">
+    Categories Page
+  </div>
+);
+
+const Live = () => (
+  <div className="min-h-screen flex items-center justify-center bg-ink text-cream text-3xl font-semibold">
+    Live Workshops
+  </div>
+);
+
+const Sell = () => (
+  <div className="min-h-screen flex items-center justify-center bg-ink text-cream text-3xl font-semibold">
+    Become a Creator
+  </div>
+);
+
+
+const About = () => (
+  <div className="min-h-screen flex items-center justify-center bg-ink text-cream text-3xl font-semibold">
+    About Us
+  </div>
+);
+
+const Contact = () => (
+  <div className="min-h-screen flex items-center justify-center bg-ink text-cream text-3xl font-semibold">
+    Contact Us
+  </div>
+);
+
+// Protected Route
+const ProtectedRoute = ({ children, role }) => {
+  const { user, loading } = React.useContext(AuthContext);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-ink text-cream">
+        Loading...
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/signin" replace />;
+  }
+
+  // If no role required, allow any authenticated user
+  if (role && user.role !== role && user.role !== "Admin") {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+};
+
+function App() {
+  return (
+    <Router>
+      <div className="min-h-screen bg-ink">
+        <Routes>
+          {/* Public Routes */}
+          <Route path="/" element={<Home />} />
+          <Route path="/live" element={<Live />} />
+          <Route path="/workshops" element={<Workshops />} />
+          <Route path="/workshops/:id" element={<WorkshopDetail />} />
+          <Route path="/categories" element={<Categories />} />
+          <Route path="/sell" element={<Sell />} />
+          <Route path="/marketplace" element={<Marketplace />} />
+          <Route path="/marketplace/:id" element={<ProductDetail />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/contact" element={<Contact />} />
+          <Route path="/signin" element={<SignIn />} />
+          <Route path="/signup" element={<SignUp />} />
+
+          {/* Protected Routes */}
+          <Route
+            path="/dashboard/creator"
+            element={
+              <ProtectedRoute role="Creator">
+                <CreatorDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route path="/dashboard/attendance" element={<ProtectedRoute role="Creator"><AttendanceDashboard /></ProtectedRoute>} />
+          <Route path="/dashboard/analytics"  element={<ProtectedRoute role="Creator"><CreatorAnalytics /></ProtectedRoute>} />
+
+          <Route path="/dashboard/user"           element={<ProtectedRoute role="User"><UserDashboard /></ProtectedRoute>} />
+          <Route path="/dashboard/user/analytics" element={<ProtectedRoute role="User"><UserAnalytics /></ProtectedRoute>} />
+
+          {/* Shared – any authenticated user */}
+          <Route path="/profile" element={<ProtectedRoute><ProfileSettings /></ProtectedRoute>} />
+
+          {/* 404 */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </div>
+    </Router>
+  );
+}
+
+export default App;
