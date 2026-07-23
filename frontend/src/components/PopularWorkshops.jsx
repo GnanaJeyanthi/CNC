@@ -95,8 +95,21 @@ export default function PopularWorkshops() {
                     <div className="text-xs font-medium text-secondary bg-teal-50 px-2 py-1 rounded">
                       {w.maxParticipants ? `Max ${w.maxParticipants} limit` : (w.seats || 'Limited seats')}
                     </div>
-                    <button className="bg-primary text-white text-sm font-medium px-5 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-                      Join Now
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (w.status === 'live' || w.status === 'LIVE') {
+                          const targetUrl = w.ngrokUrl || (w.jitsiRoomName ? `https://meet.jit.si/${w.jitsiRoomName}` : null);
+                          if (targetUrl) {
+                            window.open(targetUrl.startsWith('http') ? targetUrl : `https://${targetUrl}`, '_blank');
+                            return;
+                          }
+                        }
+                        window.location.href = '/dashboard/user';
+                      }}
+                      className="bg-primary text-white text-sm font-medium px-5 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                    >
+                      {(w.status === 'live' || w.status === 'LIVE') ? 'Join Live Now' : 'Join Now'}
                     </button>
                   </div>
                 </div>

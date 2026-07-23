@@ -86,9 +86,27 @@ const CreatorDashboard = () => {
     priceType: 'free', price: '', 
     maxParticipants: 40, thumbnail: null,
     date: '', time: '', durationMinutes: 60,
-    learningObjectives: ''
+    learningObjectives: '', ngrokUrl: ''
   });
   const [salesForm, setSalesForm] = useState({ title: '', description: '', category: '', price: '', stock: 1, images: null });
+
+  const handleGoLive = async (workshop) => {
+    try {
+      const res = await axios.post(`http://localhost:5000/api/workshops/${workshop._id}/start`, {}, {
+        headers: { Authorization: `Bearer ${user.token}` }
+      });
+      let targetUrl = res.data.ngrokUrl || res.data.jitsiUrl || res.data.liveLink;
+      if (targetUrl) {
+        if (!targetUrl.startsWith('http')) targetUrl = `https://${targetUrl}`;
+        const hostName = encodeURIComponent(user?.name ? `Host: ${user.name}` : 'Host (Creator)');
+        const fullHostUrl = `${targetUrl}#userInfo.displayName="${hostName}"`;
+        window.open(fullHostUrl, '_blank');
+      }
+      window.location.reload();
+    } catch(err) {
+      alert('Error starting live class: ' + (err.response?.data?.message || err.message));
+    }
+  };
 
   const handleCreateClass = async (e) => {
     e.preventDefault();
@@ -99,6 +117,9 @@ const CreatorDashboard = () => {
     formData.append('price', classForm.priceType === 'paid' ? classForm.price : 0);
     formData.append('maxParticipants', classForm.maxParticipants);
     formData.append('durationMinutes', classForm.durationMinutes);
+    if(classForm.ngrokUrl) {
+      formData.append('ngrokUrl', classForm.ngrokUrl);
+    }
     if(classForm.date && classForm.time) {
       formData.append('scheduledDate', new Date(`${classForm.date}T${classForm.time}`).toISOString());
     }
@@ -108,11 +129,12 @@ const CreatorDashboard = () => {
     if(classForm.thumbnail) formData.append('thumbnail', classForm.thumbnail);
     try {
       await axios.post('http://localhost:5000/api/workshops', formData, {
-        headers: { Authorization: `Bearer ${user.token}`, 'Content-Type': 'multipart/form-data' }
+        headers: { Authorization: `Bearer ${user.token}` }
       });
       alert('Class created!');
       setShowClassModal(false);
     } catch(err) {
+      console.error('Error creating workshop:', err.response?.data || err);
       alert('Error creating class: ' + (err.response?.data?.message || err.message));
     }
   };
@@ -133,12 +155,12 @@ const CreatorDashboard = () => {
     try {
       if (editingProduct) {
         await axios.put(`http://localhost:5000/api/products/${editingProduct._id}`, formData, {
-          headers: { Authorization: `Bearer ${user.token}`, 'Content-Type': 'multipart/form-data' }
+          headers: { Authorization: `Bearer ${user.token}` }
         });
         alert('Product updated!');
       } else {
         await axios.post('http://localhost:5000/api/products', formData, {
-          headers: { Authorization: `Bearer ${user.token}`, 'Content-Type': 'multipart/form-data' }
+          headers: { Authorization: `Bearer ${user.token}` }
         });
         alert('Product created!');
       }
@@ -184,7 +206,7 @@ const CreatorDashboard = () => {
     formData.append('recording', recordingFile);
     try {
       await axios.post(`http://localhost:5000/api/workshops/${activeWorkshop._id}/recording`, formData, {
-        headers: { Authorization: `Bearer ${user.token}`, 'Content-Type': 'multipart/form-data' }
+        headers: { Authorization: `Bearer ${user.token}` }
       });
       alert('Recording uploaded!');
       window.location.reload();
@@ -199,7 +221,7 @@ const CreatorDashboard = () => {
     formData.append('file', materialForm.file);
     try {
       await axios.post(`http://localhost:5000/api/workshops/${activeWorkshop._id}/materials`, formData, {
-        headers: { Authorization: `Bearer ${user.token}`, 'Content-Type': 'multipart/form-data' }
+        headers: { Authorization: `Bearer ${user.token}` }
       });
       alert('Material uploaded!');
       window.location.reload();
@@ -280,8 +302,18 @@ const CreatorDashboard = () => {
               {myWorkshops.map(w => (
                 <div key={w._id} className="border rounded-xl overflow-hidden shadow-sm flex flex-col p-4">
                   <h3 className="font-bold text-gray-900 mb-1">{w.title}</h3>
-                  <div className="text-sm text-gray-500 mb-4">{w.scheduledDate ? new Date(w.scheduledDate).toLocaleString() : 'TBA'} | {w.status}</div>
-                  <button onClick={() => { setActiveWorkshop(w); setShowContentModal(true); }} className="mt-auto w-full bg-primary text-white py-2 rounded text-sm hover:bg-blue-700">Manage Content</button>
+                  <div className="text-sm text-gray-500 mb-2">{w.scheduledDate ? new Date(w.scheduledDate).toLocaleString() : 'TBA'} | Status: <span className="font-semibold text-purple-600 uppercase text-xs">{w.status}</span></div>
+                  {w.ngrokUrl && (
+                    <div className="text-xs text-blue-700 truncate mb-3 bg-blue-50 p-2 rounded border border-blue-100 font-mono">
+                      🌐 {w.ngrokUrl}
+                    </div>
+                  )}
+                  <div className="mt-auto flex flex-col gap-2">
+                    <button onClick={() => handleGoLive(w)} className={`w-full py-2 rounded text-sm font-semibold transition text-white ${w.status === 'live' ? 'bg-green-600 hover:bg-green-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+                      {w.status === 'live' ? '🔴 Currently Live (Update Link)' : '🚀 Start Live Class (Ngrok)'}
+                    </button>
+                    <button onClick={() => { setActiveWorkshop(w); setShowContentModal(true); }} className="w-full bg-gray-100 text-gray-700 py-1.5 rounded text-sm hover:bg-gray-200">Manage Content</button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -320,48 +352,48 @@ const CreatorDashboard = () => {
               <h2 className="text-2xl font-bold mb-4 text-textMain">Create New Class</h2>
               <form onSubmit={handleCreateClass} className="flex flex-col gap-4">
                 <input type="text" placeholder="Title" required className="border p-2 rounded"
-                  value={classForm.title} onChange={e => setClassForm({...classForm, title: e.target.value})} />
+                  value={classForm.title || ''} onChange={e => setClassForm({...classForm, title: e.target.value})} />
                 <textarea placeholder="Description" className="border p-2 rounded"
-                  value={classForm.description} onChange={e => setClassForm({...classForm, description: e.target.value})}></textarea>
+                  value={classForm.description || ''} onChange={e => setClassForm({...classForm, description: e.target.value})}></textarea>
                 <input type="text" placeholder="Category" required className="border p-2 rounded"
-                  value={classForm.category} onChange={e => setClassForm({...classForm, category: e.target.value})} />
+                  value={classForm.category || ''} onChange={e => setClassForm({...classForm, category: e.target.value})} />
                 <div className="flex gap-2">
                   <div className="flex-1">
                     <label className="block text-sm font-medium mb-1">Date</label>
                     <input type="date" required className="border p-2 rounded w-full"
-                      value={classForm.date} onChange={e => setClassForm({...classForm, date: e.target.value})} />
+                      value={classForm.date || ''} onChange={e => setClassForm({...classForm, date: e.target.value})} />
                   </div>
                   <div className="flex-1">
                     <label className="block text-sm font-medium mb-1">Time</label>
                     <input type="time" required className="border p-2 rounded w-full"
-                      value={classForm.time} onChange={e => setClassForm({...classForm, time: e.target.value})} />
+                      value={classForm.time || ''} onChange={e => setClassForm({...classForm, time: e.target.value})} />
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <div className="flex-1">
                     <label className="block text-sm font-medium mb-1">Duration (Mins)</label>
                     <input type="number" required min="15" className="border p-2 rounded w-full"
-                      value={classForm.durationMinutes} onChange={e => setClassForm({...classForm, durationMinutes: e.target.value})} />
+                      value={classForm.durationMinutes || ''} onChange={e => setClassForm({...classForm, durationMinutes: e.target.value})} />
                   </div>
                   <div className="flex-1">
                     <label className="block text-sm font-medium mb-1">Max Participants</label>
                     <input type="number" required max="100" className="border p-2 rounded w-full"
-                      value={classForm.maxParticipants} onChange={e => setClassForm({...classForm, maxParticipants: e.target.value})} />
+                      value={classForm.maxParticipants || ''} onChange={e => setClassForm({...classForm, maxParticipants: e.target.value})} />
                   </div>
                 </div>
                 <div className="flex gap-2 items-center">
                   <label className="block text-sm font-medium mb-1 mr-4">Type:</label>
-                  <label className="mr-4"><input type="radio" name="priceType" value="free" checked={classForm.priceType === 'free'} onChange={() => setClassForm({...classForm, priceType: 'free', price: 0})} /> Free</label>
+                  <label className="mr-4"><input type="radio" name="priceType" value="free" checked={classForm.priceType === 'free'} onChange={() => setClassForm({...classForm, priceType: 'free', price: ''})} /> Free</label>
                   <label><input type="radio" name="priceType" value="paid" checked={classForm.priceType === 'paid'} onChange={() => setClassForm({...classForm, priceType: 'paid'})} /> Paid</label>
                 </div>
                 {classForm.priceType === 'paid' && (
                   <input type="number" placeholder="Price ($)" required min="1" className="border p-2 rounded"
-                    value={classForm.price} onChange={e => setClassForm({...classForm, price: e.target.value})} />
+                    value={classForm.price || ''} onChange={e => setClassForm({...classForm, price: e.target.value})} />
                 )}
                 <div>
                   <label className="block text-sm font-medium mb-1">Learning Objectives (one per line)</label>
                   <textarea placeholder="e.g. Master the basics of React..." className="border p-2 rounded w-full"
-                    value={classForm.learningObjectives} onChange={e => setClassForm({...classForm, learningObjectives: e.target.value})}></textarea>
+                    value={classForm.learningObjectives || ''} onChange={e => setClassForm({...classForm, learningObjectives: e.target.value})}></textarea>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Thumbnail Photo</label>
@@ -383,16 +415,16 @@ const CreatorDashboard = () => {
               <h2 className="text-2xl font-bold mb-4 text-textMain">{editingProduct ? 'Edit Product' : 'Add Product for Sale'}</h2>
               <form onSubmit={handleCreateSale} className="flex flex-col gap-4">
                 <input type="text" placeholder="Title" required className="border p-2 rounded"
-                  value={salesForm.title} onChange={e => setSalesForm({...salesForm, title: e.target.value})} />
+                  value={salesForm.title || ''} onChange={e => setSalesForm({...salesForm, title: e.target.value})} />
                 <textarea placeholder="Description" className="border p-2 rounded"
-                  value={salesForm.description} onChange={e => setSalesForm({...salesForm, description: e.target.value})}></textarea>
+                  value={salesForm.description || ''} onChange={e => setSalesForm({...salesForm, description: e.target.value})}></textarea>
                 <input type="text" placeholder="Category" required className="border p-2 rounded"
-                  value={salesForm.category} onChange={e => setSalesForm({...salesForm, category: e.target.value})} />
+                  value={salesForm.category || ''} onChange={e => setSalesForm({...salesForm, category: e.target.value})} />
                 <div className="flex gap-2">
                   <input type="number" placeholder="Price" required min="0" className="border p-2 rounded flex-1"
-                    value={salesForm.price} onChange={e => setSalesForm({...salesForm, price: e.target.value})} />
+                    value={salesForm.price || ''} onChange={e => setSalesForm({...salesForm, price: e.target.value})} />
                   <input type="number" placeholder="Stock" required min="0" className="border p-2 rounded flex-1"
-                    value={salesForm.stock} onChange={e => setSalesForm({...salesForm, stock: e.target.value})} />
+                    value={salesForm.stock || ''} onChange={e => setSalesForm({...salesForm, stock: e.target.value})} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Product Photos (Multiple allowed)</label>

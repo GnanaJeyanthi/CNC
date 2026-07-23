@@ -11,14 +11,29 @@ import {
 
 const router = express.Router();
 
+const safeUpload = (middleware) => (req, res, next) => {
+  try {
+    middleware(req, res, (err) => {
+      if (err) {
+        console.warn('Upload middleware warning:', err.message || err);
+      }
+      next();
+    });
+  } catch (syncErr) {
+    console.warn('Upload middleware sync warning:', syncErr.message || syncErr);
+    next();
+  }
+};
+
 router.get('/', getAllWorkshops);
-router.post('/', protect, requireRole('Creator', 'Admin'), uploadThumbnail, createWorkshop);
+router.post('/', protect, requireRole('Creator', 'Admin'), safeUpload(uploadThumbnail), createWorkshop);
 router.get('/creator/:id', protect, getCreatorWorkshops);
 router.get('/:id', protect, getWorkshop);
-router.put('/:id', protect, requireRole('Creator', 'Admin'), uploadThumbnail, updateWorkshop);
+router.put('/:id', protect, requireRole('Creator', 'Admin'), safeUpload(uploadThumbnail), updateWorkshop);
 router.delete('/:id', protect, requireRole('Creator', 'Admin'), deleteWorkshop);
 router.patch('/:id/schedule', protect, requireRole('Creator', 'Admin'), scheduleWorkshop);
 router.patch('/:id/start', protect, requireRole('Creator', 'Admin'), startWorkshop);
+router.post('/:id/start', protect, requireRole('Creator', 'Admin'), startWorkshop);
 router.patch('/:id/end', protect, requireRole('Creator', 'Admin'), endWorkshop);
 router.post('/:id/recording', protect, requireRole('Creator', 'Admin'), uploadRecording, uploadRecordingHandler);
 router.post('/:id/materials', protect, requireRole('Creator', 'Admin'), uploadMaterial, uploadMaterialHandler);

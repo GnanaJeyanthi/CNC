@@ -62,11 +62,16 @@ const UserDashboard = () => {
     }
   };
 
-  const handleJoinLive = async (workshopId, jitsiRoom) => {
+  const handleJoinLive = async (workshop) => {
     try {
-      await axios.post(`http://localhost:5000/api/attendance/workshops/${workshopId}/join-session`, {}, { headers });
+      await axios.post(`http://localhost:5000/api/attendance/workshops/${workshop._id}/join-session`, {}, { headers });
     } catch (e) { /* non-critical */ }
-    window.open(`https://meet.jit.si/${jitsiRoom}`, '_blank');
+    const liveUrl = workshop.ngrokUrl 
+      ? (workshop.ngrokUrl.startsWith('http') ? workshop.ngrokUrl : `https://${workshop.ngrokUrl}`)
+      : `https://meet.jit.si/${workshop.jitsiRoomName}`;
+    const studentName = encodeURIComponent(user?.name ? `Student: ${user.name}` : 'Student');
+    const fullStudentUrl = `${liveUrl}#userInfo.displayName="${studentName}"`;
+    window.open(fullStudentUrl, '_blank');
   };
 
   return (
@@ -115,14 +120,14 @@ const UserDashboard = () => {
                             <p className="text-sm text-gray-500">{w.scheduledDate ? new Date(w.scheduledDate).toLocaleString() : 'TBA'}</p>
                           </div>
                         </div>
-                        {w.status === 'live' && w.jitsiRoomName ? (
-                          <button onClick={() => handleJoinLive(w._id, w.jitsiRoomName)}
-                            className="flex items-center text-sm font-medium text-white bg-green-600 px-4 py-2 rounded-lg hover:bg-green-700 transition-colors animate-pulse">
-                            <Play className="w-4 h-4 mr-1" /> Join Live
+                        {w.status === 'live' ? (
+                          <button onClick={() => handleJoinLive(w)}
+                            className="flex items-center text-sm font-medium text-white bg-green-600 px-4 py-2 rounded-lg hover:bg-green-700 transition-colors animate-pulse shadow-md">
+                            <Play className="w-4 h-4 mr-1.5" /> Join Live Now
                           </button>
                         ) : (
                           <button className="flex items-center text-sm font-medium text-gray-400 bg-gray-100 px-4 py-2 rounded-lg cursor-not-allowed" disabled>
-                            <Clock className="w-4 h-4 mr-1" /> Waiting for host
+                            <Clock className="w-4 h-4 mr-1.5" /> Waiting for host
                           </button>
                         )}
                       </div>

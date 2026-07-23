@@ -100,7 +100,7 @@ export default function ProfileSettings() {
       if (avatarFile) fd.append('photo', avatarFile);
 
       const { data } = await axios.put(`${API}/auth/profile`, fd, {
-        headers: { ...headers, 'Content-Type': 'multipart/form-data' }
+        headers: headers
       });
       // Update context and localStorage so Navbar avatar refreshes and persists
       updateUser({ name: data.name, profilePhoto: data.profilePhoto });

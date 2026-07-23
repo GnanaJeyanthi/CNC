@@ -1,11 +1,23 @@
 import Product from '../models/Product.js';
-import { cloudinary } from '../config/cloudinary.js';
+import { cloudinary, uploadBufferToCloudinary } from '../config/cloudinary.js';
 
 // Create product
 export const createProduct = async (req, res) => {
   try {
     const { title, description, category, price, stock } = req.body;
-    const images = req.files ? req.files.map(f => ({ url: f.path, publicId: f.filename })) : [];
+    let images = [];
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        if (file.buffer) {
+          try {
+            const uploadRes = await uploadBufferToCloudinary(file.buffer, { folder: 'castncart/products' });
+            images.push({ url: uploadRes.secure_url, publicId: uploadRes.public_id });
+          } catch (e) {
+            console.warn('Product image upload error:', e.message);
+          }
+        }
+      }
+    }
     const product = await Product.create({
       title, description, category, price, stock,
       images,
@@ -73,7 +85,17 @@ export const updateProduct = async (req, res) => {
     const updates = req.body;
     // If new images uploaded, add them
     if (req.files && req.files.length > 0) {
-      const newImages = req.files.map(f => ({ url: f.path, publicId: f.filename }));
+      const newImages = [];
+      for (const file of req.files) {
+        if (file.buffer) {
+          try {
+            const uploadRes = await uploadBufferToCloudinary(file.buffer, { folder: 'castncart/products' });
+            newImages.push({ url: uploadRes.secure_url, publicId: uploadRes.public_id });
+          } catch (e) {
+            console.warn('Product image upload error:', e.message);
+          }
+        }
+      }
       updates.images = [...(product.images || []), ...newImages];
     }
     Object.assign(product, updates);

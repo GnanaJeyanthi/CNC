@@ -17,6 +17,7 @@ const workshopSchema = new mongoose.Schema({
   durationMinutes: { type: Number, default: 60 },
   status: { type: String, enum: ['draft', 'scheduled', 'live', 'ended'], default: 'draft' },
   jitsiRoomName: { type: String },
+  ngrokUrl: { type: String, default: '' },
   maxParticipants: { type: Number, default: 50 },
   thumbnailUrl: { type: String, default: '' },
   thumbnailPublicId: { type: String },

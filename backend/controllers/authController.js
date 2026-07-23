@@ -1,7 +1,7 @@
 import User from '../models/User.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { cloudinary } from '../config/cloudinary.js';
+import { cloudinary, uploadBufferToCloudinary } from '../config/cloudinary.js';
 
 const generateToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: '30d' });
@@ -75,16 +75,17 @@ export const updateProfile = async (req, res) => {
     });
 
     // Profile photo upload
-    if (req.file) {
-      if (user.profilePhotoPublicId) {
-        try {
+    if (req.file && req.file.buffer) {
+      try {
+        if (user.profilePhotoPublicId) {
           await cloudinary.uploader.destroy(user.profilePhotoPublicId);
-        } catch (err) {
-          console.error("Failed to destroy old photo in Cloudinary:", err);
         }
+        const uploadResult = await uploadBufferToCloudinary(req.file.buffer, { folder: 'castncart/profiles' });
+        user.profilePhoto = uploadResult.secure_url;
+        user.profilePhotoPublicId = uploadResult.public_id;
+      } catch (err) {
+        console.warn("Failed to upload photo to Cloudinary:", err.message);
       }
-      user.profilePhoto = req.file.path;
-      user.profilePhotoPublicId = req.file.filename;
     }
 
     await user.save();

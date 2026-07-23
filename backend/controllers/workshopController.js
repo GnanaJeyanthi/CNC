@@ -1,37 +1,65 @@
 import Workshop from '../models/Workshop.js';
 import Participant from '../models/Participant.js';
 import { generateJitsiRoomName, getJitsiRoomUrl } from '../utils/jitsi.js';
-import { cloudinary } from '../config/cloudinary.js';
+import { generateNgrokLiveUrl } from '../utils/ngrok.js';
+import { cloudinary, uploadBufferToCloudinary } from '../config/cloudinary.js';
 
 // Create workshop
 export const createWorkshop = async (req, res) => {
   try {
-    const { title, description, category, price, durationMinutes, maxParticipants, scheduledDate, learningObjectives } = req.body;
+    const { title, description, category, price, durationMinutes, maxParticipants, scheduledDate, learningObjectives } = req.body || {};
+    
+    const parsedPrice = Number(price);
+    const parsedDuration = Number(durationMinutes);
+    const parsedMax = Number(maxParticipants);
+
     const workshopData = {
-      title, description, category,
-      price: price ? Number(price) : 0,
-      durationMinutes: durationMinutes ? Number(durationMinutes) : 60,
-      maxParticipants: maxParticipants ? Number(maxParticipants) : 50,
+      title: (title && String(title).trim()) ? String(title).trim() : 'Untitled Class',
+      description: description ? String(description) : '',
+      category: (category && String(category).trim()) ? String(category).trim() : 'General',
+      price: !isNaN(parsedPrice) && parsedPrice >= 0 ? parsedPrice : 0,
+      durationMinutes: !isNaN(parsedDuration) && parsedDuration > 0 ? parsedDuration : 60,
+      maxParticipants: !isNaN(parsedMax) && parsedMax > 0 ? parsedMax : 50,
       creatorId: req.user._id,
     };
+
     if (learningObjectives) {
-      workshopData.learningObjectives = Array.isArray(learningObjectives) ? learningObjectives : learningObjectives.split('\n');
+      workshopData.learningObjectives = Array.isArray(learningObjectives)
+        ? learningObjectives
+        : typeof learningObjectives === 'string'
+          ? learningObjectives.split('\n').filter(Boolean)
+          : [];
     }
-    if (scheduledDate) {
+
+    if (scheduledDate && !isNaN(new Date(scheduledDate).getTime())) {
       workshopData.scheduledDate = new Date(scheduledDate);
       workshopData.status = 'scheduled';
     }
-    if (req.file) {
-      workshopData.thumbnailUrl = req.file.path;
-      workshopData.thumbnailPublicId = req.file.filename;
+
+    if (req.file && req.file.buffer) {
+      try {
+        const uploadResult = await uploadBufferToCloudinary(req.file.buffer, {
+          folder: 'castncart/thumbnails',
+          resource_type: 'auto',
+        });
+        if (uploadResult && uploadResult.secure_url) {
+          workshopData.thumbnailUrl = uploadResult.secure_url;
+          workshopData.thumbnailPublicId = uploadResult.public_id || '';
+        }
+      } catch (uploadErr) {
+        console.warn('Cloudinary thumbnail upload warning:', uploadErr.message);
+      }
     }
-    const jitsiRoom = generateJitsiRoomName('temp');
+
     const workshop = await Workshop.create(workshopData);
     workshop.jitsiRoomName = generateJitsiRoomName(workshop._id);
+    workshop.ngrokUrl = generateNgrokLiveUrl(workshop._id);
     await workshop.save();
-    res.status(201).json(workshop);
+
+    return res.status(201).json(workshop);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Create Workshop Error Detail:', error);
+    return res.status(500).json({ message: error.message || 'Failed to create workshop' });
   }
 };
 
@@ -89,12 +117,17 @@ export const updateWorkshop = async (req, res) => {
       return res.status(403).json({ message: 'Not authorized' });
     }
     const updates = req.body;
-    if (req.file) {
-      if (workshop.thumbnailPublicId) {
-        await cloudinary.uploader.destroy(workshop.thumbnailPublicId);
+    if (req.file && req.file.buffer) {
+      try {
+        if (workshop.thumbnailPublicId) {
+          await cloudinary.uploader.destroy(workshop.thumbnailPublicId);
+        }
+        const uploadResult = await uploadBufferToCloudinary(req.file.buffer, { folder: 'castncart/thumbnails' });
+        updates.thumbnailUrl = uploadResult.secure_url;
+        updates.thumbnailPublicId = uploadResult.public_id;
+      } catch (err) {
+        console.warn('Thumbnail upload error:', err.message);
       }
-      updates.thumbnailUrl = req.file.path;
-      updates.thumbnailPublicId = req.file.filename;
     }
     Object.assign(workshop, updates);
     await workshop.save();
@@ -150,9 +183,13 @@ export const startWorkshop = async (req, res) => {
     if (!workshop.jitsiRoomName) {
       workshop.jitsiRoomName = generateJitsiRoomName(workshop._id);
     }
+    if (!workshop.ngrokUrl || workshop.ngrokUrl.includes('castncart-live.ngrok-free.app')) {
+      workshop.ngrokUrl = generateNgrokLiveUrl(workshop._id);
+    }
     workshop.status = 'live';
     await workshop.save();
-    res.json({ workshop, jitsiUrl: getJitsiRoomUrl(workshop.jitsiRoomName) });
+    
+    res.json({ workshop, jitsiUrl: getJitsiRoomUrl(workshop.jitsiRoomName), liveLink: workshop.ngrokUrl, ngrokUrl: workshop.ngrokUrl });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -183,10 +220,15 @@ export const uploadRecordingHandler = async (req, res) => {
       return res.status(403).json({ message: 'Not authorized' });
     }
     // Support file upload or external URL
-    if (req.file) {
-      if (workshop.recordingPublicId) await cloudinary.uploader.destroy(workshop.recordingPublicId, { resource_type: 'video' });
-      workshop.recordingUrl = req.file.path;
-      workshop.recordingPublicId = req.file.filename;
+    if (req.file && req.file.buffer) {
+      try {
+        if (workshop.recordingPublicId) await cloudinary.uploader.destroy(workshop.recordingPublicId, { resource_type: 'video' });
+        const uploadResult = await uploadBufferToCloudinary(req.file.buffer, { folder: 'castncart/recordings', resource_type: 'video' });
+        workshop.recordingUrl = uploadResult.secure_url;
+        workshop.recordingPublicId = uploadResult.public_id;
+      } catch (err) {
+        console.warn('Recording upload warning:', err.message);
+      }
     } else if (req.body.recordingUrl) {
       workshop.recordingUrl = req.body.recordingUrl;
       workshop.recordingPublicId = '';
@@ -208,16 +250,21 @@ export const uploadMaterialHandler = async (req, res) => {
     if (workshop.creatorId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Not authorized' });
     }
-    if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-    const material = {
-      title: req.body.title || req.file.originalname || 'Untitled',
-      fileUrl: req.file.path,
-      fileType: req.file.originalname?.split('.').pop() || 'pdf',
-      publicId: req.file.filename,
-    };
-    workshop.studyMaterials.push(material);
-    await workshop.save();
-    res.status(201).json(workshop);
+    if (!req.file || !req.file.buffer) return res.status(400).json({ message: 'No file uploaded' });
+    try {
+      const uploadResult = await uploadBufferToCloudinary(req.file.buffer, { folder: 'castncart/materials', resource_type: 'raw' });
+      const material = {
+        title: req.body.title || req.file.originalname || 'Untitled',
+        fileUrl: uploadResult.secure_url,
+        fileType: req.file.originalname?.split('.').pop() || 'pdf',
+        publicId: uploadResult.public_id,
+      };
+      workshop.studyMaterials.push(material);
+      await workshop.save();
+      res.status(201).json(workshop);
+    } catch (err) {
+      res.status(500).json({ message: err.message || 'Failed to upload material' });
+    }
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

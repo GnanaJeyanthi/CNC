@@ -56,7 +56,7 @@ const SignUp = () => {
       {/* Overlay to ensure form readability */}
       <div className="absolute inset-0 bg-black/30 z-0"></div>
 
-      <div className="relative z-10 max-w-md w-full space-y-8 bg-white/90 backdrop-blur-md p-8 rounded-2xl shadow-2xl border border-white/20">
+      <div className="relative z-10 max-w-md w-full space-y-8 bg-white/85 backdrop-blur-md p-8 rounded-2xl shadow-2xl border border-white/20">
         <div className="text-center">
           <h2 className="text-3xl font-extrabold text-gray-900">
             {step === 1 ? 'Join CastNcart' : `Create ${role} Account`}

@@ -1,67 +1,53 @@
 import { v2 as cloudinary } from 'cloudinary';
-import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import multer from 'multer';
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+  });
+}
 
-// Product images storage
-const productStorage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: 'castncart/products',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'avif'],
-    transformation: [{ width: 800, height: 800, crop: 'limit', quality: 'auto' }],
-  },
-});
+const storage = multer.memoryStorage();
 
-// Study materials storage
-const materialStorage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: 'castncart/materials',
-    resource_type: 'raw',
-    allowed_formats: ['pdf', 'docx', 'ppt', 'pptx'],
-  },
-});
+export const uploadProductImages = multer({ storage }).array('images', 10);
+export const uploadMaterial = multer({ storage }).single('file');
+export const uploadThumbnail = multer({ storage }).single('thumbnail');
+export const uploadRecording = multer({ storage }).single('recording');
+export const uploadProfilePhoto = multer({ storage }).single('photo');
 
-// Thumbnail storage
-const thumbnailStorage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: 'castncart/thumbnails',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'avif'],
-    transformation: [{ width: 640, height: 360, crop: 'fill', quality: 'auto' }],
-  },
-});
+export const uploadBufferToCloudinary = (fileBuffer, options = {}) => {
+  return new Promise((resolve) => {
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
 
-// Recording storage
-const recordingStorage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: 'castncart/recordings',
-    resource_type: 'video',
-    allowed_formats: ['mp4', 'webm', 'mov'],
-  },
-});
+    if (!cloudName || !apiKey || !apiSecret) {
+      console.warn('Cloudinary credentials missing/incomplete in .env (skipping file upload)');
+      return resolve(null);
+    }
 
-// Profile photo storage
-const profileStorage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: 'castncart/profiles',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'avif'],
-    transformation: [{ width: 300, height: 300, crop: 'fill', gravity: 'face', quality: 'auto' }],
-  },
-});
+    try {
+      cloudinary.config({
+        cloud_name: cloudName,
+        api_key: apiKey,
+        api_secret: apiSecret,
+      });
 
-export const uploadProductImages = multer({ storage: productStorage }).array('images', 10);
-export const uploadMaterial = multer({ storage: materialStorage }).single('file');
-export const uploadThumbnail = multer({ storage: thumbnailStorage }).single('thumbnail');
-export const uploadRecording = multer({ storage: recordingStorage }).single('recording');
-export const uploadProfilePhoto = multer({ storage: profileStorage }).single('photo');
+      const stream = cloudinary.uploader.upload_stream(options, (error, result) => {
+        if (error) {
+          console.warn('Cloudinary upload warning:', error.message || error);
+          return resolve(null);
+        }
+        resolve(result);
+      });
+      stream.end(fileBuffer);
+    } catch (err) {
+      console.warn('Cloudinary upload exception:', err.message || err);
+      resolve(null);
+    }
+  });
+};
 
 export { cloudinary };
