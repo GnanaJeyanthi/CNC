@@ -12,6 +12,7 @@ const userSchema = new mongoose.Schema({
   bio:                  { type: String },
   profilePhoto:         { type: String },
   profilePhotoPublicId: { type: String },
+  categories:           [{ type: String, trim: true }],
   // Social links
   website:              { type: String },
   twitter:              { type: String },

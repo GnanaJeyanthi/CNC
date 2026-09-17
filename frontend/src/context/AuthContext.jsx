@@ -22,7 +22,7 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('userInfo', JSON.stringify(data));
       return data;
     } catch (error) {
-      throw error.response?.data?.message || 'Login failed';
+      throw error.response?.data?.message || error.message || 'Login failed';
     }
   };
 
@@ -31,7 +31,7 @@ export const AuthProvider = ({ children }) => {
       const { data } = await axios.post('http://localhost:5000/api/auth/register', userData);
       return data;
     } catch (error) {
-      throw error.response?.data?.message || 'Registration failed';
+      throw error.response?.data?.message || error.message || 'Registration failed';
     }
   };
 

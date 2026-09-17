@@ -46,7 +46,7 @@ export default function Hero() {
             <Link to="/live" className="bg-primary text-white font-medium px-8 py-4 rounded-xl hover:bg-blue-600 transition-colors shadow-lg hover:shadow-xl">
               Join Live Workshop
             </Link>
-            <Link to="/sell" className="bg-white/10 backdrop-blur-md text-white border border-white/20 font-medium px-8 py-4 rounded-xl hover:bg-white/20 transition-colors shadow-sm">
+            <Link to="/login" className="bg-white/10 backdrop-blur-md text-white border border-white/20 font-medium px-8 py-4 rounded-xl hover:bg-white/20 transition-colors shadow-sm">
               Become a Creator
             </Link>
           </div>

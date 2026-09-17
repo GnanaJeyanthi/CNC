@@ -5,6 +5,15 @@ import { cloudinary, uploadBufferToCloudinary } from '../config/cloudinary.js';
 export const createProduct = async (req, res) => {
   try {
     const { title, description, category, price, stock } = req.body;
+    let attributes = req.body.attributes;
+    if (typeof attributes === 'string') {
+      try {
+        attributes = JSON.parse(attributes);
+      } catch (e) {
+        attributes = {};
+      }
+    }
+
     let images = [];
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
@@ -19,7 +28,12 @@ export const createProduct = async (req, res) => {
       }
     }
     const product = await Product.create({
-      title, description, category, price, stock,
+      title,
+      description,
+      category,
+      price,
+      stock,
+      attributes: attributes || {},
       images,
       creatorId: req.user._id,
     });
@@ -34,13 +48,19 @@ export const getAllProducts = async (req, res) => {
   try {
     const { search, category } = req.query;
     let query = {};
-    if (search) {
-      query.title = { $regex: search, $options: 'i' };
+    if (search && search.trim() !== '') {
+      query.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { category: { $regex: search, $options: 'i' } }
+      ];
     }
     if (category && category !== 'All') {
-      query.category = category;
+      query.category = { $regex: `^${category}$`, $options: 'i' };
     }
-    const products = await Product.find(query).sort({ createdAt: -1 }).limit(20).populate('creatorId', 'name');
+    const products = await Product.find(query)
+      .sort({ createdAt: -1 })
+      .populate('creatorId', 'name email profilePhoto');
     res.json(products);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -82,7 +102,14 @@ export const updateProduct = async (req, res) => {
     if (product.creatorId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Not authorized' });
     }
-    const updates = req.body;
+    const updates = { ...req.body };
+    if (typeof updates.attributes === 'string') {
+      try {
+        updates.attributes = JSON.parse(updates.attributes);
+      } catch (e) {
+        delete updates.attributes;
+      }
+    }
     // If new images uploaded, add them
     if (req.files && req.files.length > 0) {
       const newImages = [];

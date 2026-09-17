@@ -2,6 +2,7 @@ import React, { useContext, useEffect, useState } from 'react';
 import axios from 'axios';
 import { AuthContext } from '../../context/AuthContext';
 import { Play, Calendar, Star, Package, Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import DailyGamesBanner from '../../components/DailyGamesBanner';
 
 const statusColors = {
   attended:   'bg-green-100 text-green-700',
@@ -16,7 +17,7 @@ const statusIcons = {
   registered: <Clock      className="w-3.5 h-3.5" />,
 };
 
-const TABS = ['Overview', 'Attendance History', 'Order History'];
+const TABS = ['Overview', 'Recorded Videos 📹', 'Attendance History', 'Order History'];
 
 const UserDashboard = () => {
   const { user } = useContext(AuthContext);
@@ -25,7 +26,8 @@ const UserDashboard = () => {
     upcomingWorkshops: [],
     recommendedWorkshops: [],
     purchasedProducts: [],
-    recentlyWatched: []
+    recentlyWatched: [],
+    recordedVideos: []
   });
   const [attendance, setAttendance] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -49,8 +51,10 @@ const UserDashboard = () => {
 
   useEffect(() => {
     if (!user || activeTab !== 'Order History') return;
-    setOrders(data.purchasedProducts || []);
-  }, [user, activeTab, data]);
+    axios.get('http://localhost:5000/api/orders/my-orders', { headers })
+      .then(r => setOrders(r.data))
+      .catch(console.error);
+  }, [user, activeTab]);
 
   const handleJoin = async (id) => {
     try {
@@ -82,6 +86,9 @@ const UserDashboard = () => {
 
           {/* Tabs */}
           <div className="flex items-center gap-3">
+            <a href="/games" className="text-sm bg-amber-500 text-amber-950 font-bold px-4 py-1.5 rounded-lg hover:bg-amber-400 transition flex items-center gap-1.5 shadow-sm">
+              <span>🧩</span> Daily Puzzles
+            </a>
             <a href="/profile" className="text-sm bg-gray-700 text-white px-4 py-1.5 rounded-lg hover:bg-gray-900 transition">
               👤 My Profile
             </a>
@@ -98,6 +105,9 @@ const UserDashboard = () => {
             </div>
           </div>
         </div>
+
+        {/* Daily Puzzles LinkedIn-style Bar */}
+        <DailyGamesBanner />
 
         {/* ── Overview Tab ─────────────────────────────────────────────────── */}
         {activeTab === 'Overview' && (
@@ -172,9 +182,9 @@ const UserDashboard = () => {
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                 <h2 className="text-lg font-bold text-gray-900 mb-4">Watch Recordings</h2>
                 <div className="space-y-4">
-                  {data.recentlyWatched.length === 0
+                  {(data.recordedVideos || []).length === 0
                     ? <p className="text-gray-500 text-sm">No recordings yet.</p>
-                    : data.recentlyWatched.map(w => (
+                    : (data.recordedVideos || []).map(w => (
                       <div key={w._id} className="flex justify-between items-center border-b pb-3">
                         <div>
                           <div className="text-sm font-semibold">{w.title}</div>
@@ -220,6 +230,75 @@ const UserDashboard = () => {
                   }
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Recorded Videos Tab ────────────────────────────────────────── */}
+        {activeTab === 'Recorded Videos 📹' && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="p-6 border-b">
+              <h2 className="text-xl font-bold text-gray-900">Recorded Masterclasses & Workshops</h2>
+              <p className="text-sm text-gray-500 mt-1">Watch replays of the workshops you've attended.</p>
+            </div>
+            
+            <div className="p-6">
+              {(data.recordedVideos || []).length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 bg-gray-100 text-gray-400 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Play className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-1">No recordings available yet</h3>
+                  <p className="text-gray-500">When your instructors publish workshop recordings, they will appear here.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {(data.recordedVideos || []).map(w => (
+                    <div key={w._id} className="border border-gray-100 rounded-xl overflow-hidden hover:shadow-md transition bg-white flex flex-col">
+                      <div className="h-40 bg-gray-900 relative group cursor-pointer" onClick={() => window.location.href = `/workshops/${w._id}`}>
+                        {w.thumbnailUrl ? (
+                          <img src={w.thumbnailUrl} alt={w.title} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-700">🎨</div>
+                        )}
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-white border border-white/30 group-hover:bg-primary group-hover:border-primary transition">
+                            <Play className="w-5 h-5 ml-1" />
+                          </div>
+                        </div>
+                        <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded font-medium backdrop-blur-md">
+                          Replay Available
+                        </div>
+                      </div>
+                      
+                      <div className="p-4 flex-1 flex flex-col">
+                        <span className="text-xs font-bold text-primary mb-1 uppercase tracking-wider">{w.category || 'Workshop'}</span>
+                        <h3 className="font-bold text-gray-900 mb-2 line-clamp-2">{w.title}</h3>
+                        <p className="text-xs text-gray-500 mb-4 line-clamp-2">{w.description}</p>
+                        
+                        <div className="mt-auto pt-4 border-t border-gray-100 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            {w.creatorId?.avatar ? (
+                              <img src={w.creatorId.avatar} alt="" className="w-6 h-6 rounded-full" />
+                            ) : (
+                              <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-500">
+                                {w.creatorId?.name?.[0] || 'I'}
+                              </div>
+                            )}
+                            <span className="text-xs font-medium text-gray-600 truncate max-w-[100px]">{w.creatorId?.name || 'Instructor'}</span>
+                          </div>
+                          <a 
+                            href={`/workshops/${w._id}`}
+                            className="text-primary text-xs font-bold hover:underline"
+                          >
+                            Watch Now →
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -283,53 +362,112 @@ const UserDashboard = () => {
         {/* ── Order History Tab ─────────────────────────────────────────────── */}
         {activeTab === 'Order History' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-6 border-b">
-              <h2 className="text-xl font-bold text-gray-900">Order History</h2>
+            <div className="p-6 border-b flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Order History</h2>
+                <p className="text-sm text-gray-500 mt-0.5">All your product purchases with payment details.</p>
+              </div>
+              <a href="/marketplace" className="text-sm bg-accent text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition font-medium">
+                Shop More →
+              </a>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="text-left px-6 py-3 text-gray-500 font-medium">Order ID</th>
-                    <th className="text-left px-6 py-3 text-gray-500 font-medium">Items</th>
-                    <th className="text-left px-6 py-3 text-gray-500 font-medium">Date</th>
-                    <th className="text-center px-6 py-3 text-gray-500 font-medium">Status</th>
-                    <th className="text-right px-6 py-3 text-gray-500 font-medium">Total</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {data.purchasedProducts.length === 0 && (
-                    <tr><td colSpan={5} className="text-center py-10 text-gray-400">No orders placed yet.</td></tr>
-                  )}
-                  {data.purchasedProducts.map(order => (
-                    <tr key={order._id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 text-gray-400 text-xs font-mono">{order._id.slice(-8)}</td>
-                      <td className="px-6 py-4">
-                        <div className="space-y-1">
-                          {order.items.map(item => (
-                            <div key={item._id} className="flex items-center gap-2">
-                              <Package className="w-3.5 h-3.5 text-accent" />
-                              <span>{item.itemId?.title || 'Item'}</span>
-                              <span className="text-gray-400 text-xs">×{item.quantity}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-gray-500 text-xs">{new Date(order.createdAt).toLocaleDateString()}</td>
-                      <td className="px-6 py-4 text-center">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          order.status === 'paid' ? 'bg-green-100 text-green-700' :
-                          order.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                          'bg-gray-100 text-gray-600'}`}>
-                          {order.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right font-bold text-gray-900">${order.totalAmount}</td>
+
+            {orders.length === 0 ? (
+              <div className="text-center py-16">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Package className="w-8 h-8 text-gray-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-700 mb-1">No orders yet</h3>
+                <p className="text-gray-400 text-sm">Your purchased products will appear here after payment.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="text-left px-6 py-3 text-gray-500 font-medium">Product</th>
+                      <th className="text-left px-6 py-3 text-gray-500 font-medium">Order ID</th>
+                      <th className="text-left px-6 py-3 text-gray-500 font-medium">Date</th>
+                      <th className="text-center px-6 py-3 text-gray-500 font-medium">Status</th>
+                      <th className="text-left px-6 py-3 text-gray-500 font-medium">Payment ID</th>
+                      <th className="text-right px-6 py-3 text-gray-500 font-medium">Total</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {orders.map(order => (
+                      <tr key={order._id} className="hover:bg-gray-50 transition-colors">
+                        {/* Product name + thumbnail */}
+                        <td className="px-6 py-4">
+                          <div className="space-y-1">
+                            {order.items.map(item => (
+                              <div key={item._id} className="flex items-center gap-3">
+                                {item.itemId?.images?.[0]?.url ? (
+                                  <img
+                                    src={item.itemId.images[0].url}
+                                    alt={item.itemId?.title}
+                                    className="w-10 h-10 rounded-lg object-cover border border-gray-100 flex-shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                                    <Package className="w-5 h-5 text-gray-400" />
+                                  </div>
+                                )}
+                                <div>
+                                  <div className="font-medium text-gray-900">{item.itemId?.title || 'Item'}</div>
+                                  <div className="text-xs text-gray-400">Qty: {item.quantity} · ₹{item.price} each</div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        {/* Short order ID */}
+                        <td className="px-6 py-4 text-gray-400 text-xs font-mono">
+                          #{order._id.slice(-8).toUpperCase()}
+                        </td>
+                        {/* Date */}
+                        <td className="px-6 py-4 text-gray-500 text-xs">
+                          {new Date(order.createdAt).toLocaleDateString('en-IN', {
+                            day: '2-digit', month: 'short', year: 'numeric'
+                          })}
+                        </td>
+                        {/* Status badge */}
+                        <td className="px-6 py-4 text-center">
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                            order.status === 'paid'      ? 'bg-green-100 text-green-700' :
+                            order.status === 'pending'   ? 'bg-yellow-100 text-yellow-700' :
+                            order.status === 'shipped'   ? 'bg-blue-100 text-blue-700' :
+                            order.status === 'completed' ? 'bg-purple-100 text-purple-700' :
+                            order.status === 'cancelled' ? 'bg-red-100 text-red-600' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>
+                            {order.status === 'paid'      && '✅ '}
+                            {order.status === 'pending'   && '⏳ '}
+                            {order.status === 'shipped'   && '📦 '}
+                            {order.status === 'completed' && '🎉 '}
+                            {order.status === 'cancelled' && '❌ '}
+                            {order.status}
+                          </span>
+                        </td>
+                        {/* Razorpay Payment ID */}
+                        <td className="px-6 py-4">
+                          {order.razorpayPaymentId ? (
+                            <span className="text-xs font-mono text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">
+                              {order.razorpayPaymentId}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-300">—</span>
+                          )}
+                        </td>
+                        {/* Total */}
+                        <td className="px-6 py-4 text-right font-black text-gray-900 text-base">
+                          ₹{order.totalAmount.toLocaleString('en-IN')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 

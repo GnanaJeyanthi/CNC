@@ -161,7 +161,11 @@ export const getUserAnalytics = async (req, res) => {
 
     // ── All participant records ─────────────────────────────────────────────
     const allParticipants = await Participant.find({ userId })
-      .populate({ path: 'workshopId', select: 'title category price durationMinutes status scheduledDate' });
+      .populate({ 
+        path: 'workshopId', 
+        select: 'title category price durationMinutes status scheduledDate recordingUrl thumbnailUrl replayPublished description',
+        populate: { path: 'creatorId', select: 'name avatar' }
+      });
 
     const validParticipants = allParticipants.filter(p => p.workshopId);
     const totalJoined   = validParticipants.length;
@@ -229,12 +233,7 @@ export const getUserAnalytics = async (req, res) => {
       ...p.workshopId.toObject(), attended: p.attended, status: p.status
     }));
     const upcomingWorkshops  = joinedWorkshops.filter(w => w.scheduledDate && new Date(w.scheduledDate) > new Date());
-    const recentlyWatched    = joinedWorkshops.filter(w => w.attended || w.status === 'ended');
-    const joinedIds          = joinedWorkshops.map(w => w._id);
-    const recommendedWorkshops = await Workshop.find({
-      _id: { $nin: joinedIds },
-      status: { $in: ['scheduled', 'live', 'ended'] }
-    }).limit(4).populate('creatorId', 'name avatar');
+    const recordedVideos = joinedWorkshops.filter(w => w.recordingUrl || w.replayPublished);
 
     res.json({
       // KPIs
@@ -249,7 +248,7 @@ export const getUserAnalytics = async (req, res) => {
       attendanceBreakdown,
       // Dashboard data
       purchasedProducts: allOrders,
-      upcomingWorkshops, recentlyWatched, recommendedWorkshops,
+      upcomingWorkshops, recentlyWatched, recordedVideos, recommendedWorkshops,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });

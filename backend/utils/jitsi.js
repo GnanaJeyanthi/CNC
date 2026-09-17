@@ -6,5 +6,6 @@ export function generateJitsiRoomName(workshopId) {
 }
 
 export function getJitsiRoomUrl(roomName) {
-  return `https://meet.jit.si/${roomName}`;
+  const cleanName = roomName || 'castncart-live-room';
+  return `https://meet.element.io/${cleanName}`;
 }

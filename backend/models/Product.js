@@ -7,6 +7,11 @@ const productSchema = new mongoose.Schema({
   creatorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   price: { type: Number, required: true, min: 0 },
   stock: { type: Number, default: 0 },
+  attributes: {
+    type: Map,
+    of: String,
+    default: {}
+  },
   images: [{
     url: { type: String, required: true },
     publicId: { type: String, required: true },

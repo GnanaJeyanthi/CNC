@@ -1,13 +1,26 @@
 import Workshop from '../models/Workshop.js';
 import Participant from '../models/Participant.js';
+import Notification from '../models/Notification.js';
 import { generateJitsiRoomName, getJitsiRoomUrl } from '../utils/jitsi.js';
 import { generateNgrokLiveUrl } from '../utils/ngrok.js';
 import { cloudinary, uploadBufferToCloudinary } from '../config/cloudinary.js';
 
+// Helper: get effective price (early bird or regular)
+function getEffectivePrice(workshop) {
+  if (
+    workshop.earlyBirdPrice != null &&
+    workshop.earlyBirdDeadline &&
+    new Date() < new Date(workshop.earlyBirdDeadline)
+  ) {
+    return { price: workshop.earlyBirdPrice, isEarlyBird: true };
+  }
+  return { price: workshop.price, isEarlyBird: false };
+}
+
 // Create workshop
 export const createWorkshop = async (req, res) => {
   try {
-    const { title, description, category, price, durationMinutes, maxParticipants, scheduledDate, learningObjectives } = req.body || {};
+    const { title, description, category, price, durationMinutes, maxParticipants, scheduledDate, learningObjectives, earlyBirdPrice, earlyBirdDeadline } = req.body || {};
     
     const parsedPrice = Number(price);
     const parsedDuration = Number(durationMinutes);
@@ -34,6 +47,13 @@ export const createWorkshop = async (req, res) => {
     if (scheduledDate && !isNaN(new Date(scheduledDate).getTime())) {
       workshopData.scheduledDate = new Date(scheduledDate);
       workshopData.status = 'scheduled';
+    }
+
+    if (earlyBirdPrice != null && !isNaN(Number(earlyBirdPrice))) {
+      workshopData.earlyBirdPrice = Number(earlyBirdPrice);
+    }
+    if (earlyBirdDeadline && !isNaN(new Date(earlyBirdDeadline).getTime())) {
+      workshopData.earlyBirdDeadline = new Date(earlyBirdDeadline);
     }
 
     if (req.file && req.file.buffer) {
@@ -68,13 +88,19 @@ export const getAllWorkshops = async (req, res) => {
   try {
     const { search, category } = req.query;
     let query = {};
-    if (search) {
-      query.title = { $regex: search, $options: 'i' };
+    if (search && search.trim() !== '') {
+      query.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { category: { $regex: search, $options: 'i' } }
+      ];
     }
     if (category && category !== 'All') {
-      query.category = category;
+      query.category = { $regex: `^${category}$`, $options: 'i' };
     }
-    const workshops = await Workshop.find(query).sort({ scheduledDate: 1, createdAt: -1 }).populate('creatorId', 'name avatar');
+    const workshops = await Workshop.find(query)
+      .sort({ scheduledDate: 1, createdAt: -1 })
+      .populate('creatorId', 'name email profilePhoto');
     res.json(workshops);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -315,26 +341,239 @@ export const checkEnrollment = async (req, res) => {
   }
 };
 
-// Join a workshop
+// Join a workshop (free) — if full, redirect to waitlist
 export const joinWorkshop = async (req, res) => {
   try {
     const workshopId = req.params.id;
     const userId = req.user._id;
     const workshop = await Workshop.findById(workshopId);
     if (!workshop) return res.status(404).json({ message: 'Workshop not found' });
-    
-    // Check if already joined
+
+    // Check if already a participant
     const existing = await Participant.findOne({ workshopId, userId });
     if (existing) return res.status(400).json({ message: 'Already joined this workshop' });
-    
+
+    // Check if already on waitlist
+    const onWaitlist = workshop.waitlist.some(w => w.userId.toString() === userId.toString());
+    if (onWaitlist) return res.status(400).json({ message: 'Already on the waitlist' });
+
     // Check max participants limit
     const participantCount = await Participant.countDocuments({ workshopId });
     if (participantCount >= workshop.maxParticipants) {
-      return res.status(400).json({ message: 'Workshop is full' });
+      // Add to waitlist instead
+      workshop.waitlist.push({ userId });
+      await workshop.save();
+      return res.status(200).json({ waitlisted: true, message: 'Workshop is full. You have been added to the waitlist.' });
     }
-    
+
     const participant = await Participant.create({ workshopId, userId });
+
+    // Create enrollment notification for Student
+    if (workshop.scheduledDate) {
+      await Notification.create({
+        userId,
+        type: 'workshop_reminder',
+        title: `Reminder: "${workshop.title}" is coming up!`,
+        message: `Your workshop starts on ${new Date(workshop.scheduledDate).toLocaleDateString()}. Get ready!`,
+        link: `/workshops/${workshopId}`,
+      });
+    }
+
+    // Create enrollment notification for Creator
+    await Notification.create({
+      userId: workshop.creatorId,
+      type: 'new_enrollment',
+      title: `🎉 New Student Enrolled!`,
+      message: `${req.user.name} has just enrolled in your masterclass: "${workshop.title}".`,
+      link: `/dashboard/creator/workshops`,
+    });
+
     res.status(201).json(participant);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Join waitlist explicitly
+export const joinWaitlist = async (req, res) => {
+  try {
+    const workshopId = req.params.id;
+    const userId = req.user._id;
+    const workshop = await Workshop.findById(workshopId);
+    if (!workshop) return res.status(404).json({ message: 'Workshop not found' });
+
+    const alreadyParticipant = await Participant.findOne({ workshopId, userId });
+    if (alreadyParticipant) return res.status(400).json({ message: 'Already enrolled in this workshop' });
+
+    const alreadyWaiting = workshop.waitlist.some(w => w.userId.toString() === userId.toString());
+    if (alreadyWaiting) return res.status(400).json({ message: 'Already on the waitlist' });
+
+    workshop.waitlist.push({ userId });
+    await workshop.save();
+    res.json({ message: 'Added to waitlist', position: workshop.waitlist.length });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Leave a workshop (opens a spot for waitlist)
+export const leaveWorkshop = async (req, res) => {
+  try {
+    const workshopId = req.params.id;
+    const userId = req.user._id;
+
+    const participant = await Participant.findOne({ workshopId, userId });
+    if (!participant) return res.status(404).json({ message: 'Not enrolled in this workshop' });
+
+    await participant.deleteOne();
+
+    // Promote first person from waitlist
+    const workshop = await Workshop.findById(workshopId);
+    if (workshop && workshop.waitlist.length > 0) {
+      const next = workshop.waitlist.shift();
+      await workshop.save();
+      await Participant.create({ workshopId, userId: next.userId });
+      // Notify promoted user
+      await Notification.create({
+        userId: next.userId,
+        type: 'waitlist_promoted',
+        title: `Great news! A spot opened up in "${workshop.title}"`,
+        message: 'You have been moved off the waitlist and are now enrolled!',
+        link: `/workshops/${workshopId}`,
+      });
+    }
+
+    res.json({ message: 'Left workshop successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Remove self from waitlist
+export const leaveWaitlist = async (req, res) => {
+  try {
+    const workshopId = req.params.id;
+    const userId = req.user._id;
+    const workshop = await Workshop.findById(workshopId);
+    if (!workshop) return res.status(404).json({ message: 'Workshop not found' });
+
+    const idx = workshop.waitlist.findIndex(w => w.userId.toString() === userId.toString());
+    if (idx === -1) return res.status(404).json({ message: 'Not on waitlist' });
+
+    workshop.waitlist.splice(idx, 1);
+    await workshop.save();
+    res.json({ message: 'Removed from waitlist' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Check waitlist status for current user
+export const checkWaitlist = async (req, res) => {
+  try {
+    const workshop = await Workshop.findById(req.params.id);
+    if (!workshop) return res.status(404).json({ message: 'Workshop not found' });
+    const idx = workshop.waitlist.findIndex(w => w.userId.toString() === req.user._id.toString());
+    res.json({ onWaitlist: idx !== -1, position: idx !== -1 ? idx + 1 : null, total: workshop.waitlist.length });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Publish recording as replay
+export const publishReplay = async (req, res) => {
+  try {
+    const workshop = await Workshop.findById(req.params.id);
+    if (!workshop) return res.status(404).json({ message: 'Workshop not found' });
+    if (workshop.creatorId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+    if (req.body.recordingUrl) {
+      workshop.recordingUrl = req.body.recordingUrl;
+    }
+    if (!workshop.recordingUrl) {
+      return res.status(400).json({ message: 'No recording uploaded yet. Upload a recording file or provide a video URL.' });
+    }
+
+    workshop.replayPublished = req.body.published !== false && req.body.replayPublished !== false; // default true
+    if (req.body.replayPrice != null) workshop.replayPrice = Number(req.body.replayPrice);
+    await workshop.save();
+
+    // Notify all attendees that replay is available
+    if (workshop.replayPublished) {
+      const attendees = await Participant.find({ workshopId: workshop._id, status: { $in: ['attended', 'partial'] } });
+      const notifications = attendees.map(p => ({
+        userId: p.userId,
+        type: 'replay_published',
+        title: `Replay available: "${workshop.title}"`,
+        message: 'The recording from your workshop is now available to watch anytime.',
+        link: `/workshops/${workshop._id}`,
+      }));
+      if (notifications.length) await Notification.insertMany(notifications);
+    }
+
+    res.json(workshop);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Get replay (check access — attended = free, others need paid order)
+export const getReplay = async (req, res) => {
+  try {
+    const workshop = await Workshop.findById(req.params.id);
+    if (!workshop) return res.status(404).json({ message: 'Workshop not found' });
+    if (!workshop.replayPublished) return res.status(404).json({ message: 'Replay not available' });
+
+    const userId = req.user?._id;
+
+    // Creator always has access
+    if (workshop.creatorId.toString() === userId?.toString()) {
+      return res.json({ url: workshop.recordingUrl, access: 'creator' });
+    }
+
+    // Check if attended (free access)
+    const participant = await Participant.findOne({ workshopId: workshop._id, userId, status: { $in: ['attended', 'partial'] } });
+    if (participant) {
+      return res.json({ url: workshop.recordingUrl, access: 'attendee' });
+    }
+
+    // Check if purchased replay
+    const { default: Order } = await import('./orderController.js').then(() => import('../models/Order.js'));
+    const paidOrder = await Order.findOne({
+      buyerId: userId,
+      'items.itemId': workshop._id,
+      'items.itemModel': 'Replay',
+      status: 'paid',
+    });
+    if (paidOrder) {
+      return res.json({ url: workshop.recordingUrl, access: 'purchased' });
+    }
+
+    // No access — return replay info for purchase
+    return res.status(403).json({
+      message: 'Purchase required to watch replay',
+      replayPrice: workshop.replayPrice,
+      workshopId: workshop._id,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Get effective price (early bird vs normal)
+export const getEffectivePriceAPI = async (req, res) => {
+  try {
+    const workshop = await Workshop.findById(req.params.id).select('price earlyBirdPrice earlyBirdDeadline');
+    if (!workshop) return res.status(404).json({ message: 'Workshop not found' });
+    const { price, isEarlyBird } = getEffectivePrice(workshop);
+    res.json({
+      effectivePrice: price,
+      isEarlyBird,
+      originalPrice: workshop.price,
+      earlyBirdPrice: workshop.earlyBirdPrice,
+      earlyBirdDeadline: workshop.earlyBirdDeadline,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

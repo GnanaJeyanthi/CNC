@@ -10,7 +10,7 @@ const generateToken = (id, role) => {
 // ── Auth ─────────────────────────────────────────────────────────────────────
 export const registerUser = async (req, res) => {
   try {
-    const { name, email, password, role, expertise, portfolio, bio, interests } = req.body;
+    const { name, email, password, role, expertise, portfolio, bio, interests, categories } = req.body;
     const userExists = await User.findOne({ email });
     if (userExists) return res.status(400).json({ message: 'User already exists' });
 
@@ -19,19 +19,25 @@ export const registerUser = async (req, res) => {
 
     const user = await User.create({
       name, email, password: hashedPassword, role,
-      expertise, portfolio, bio, interests
+      expertise, portfolio, bio, interests, categories: categories || []
     });
 
     if (user) {
       res.status(201).json({
         _id: user.id, name: user.name, email: user.email,
         role: user.role, token: generateToken(user._id, user.role),
+        categories: user.categories || [],
       });
     } else {
       res.status(400).json({ message: 'Invalid user data' });
     }
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Registration Error:', error);
+    let errorMsg = error.message;
+    if (error.message && (error.message.includes('SSL') || error.message.includes('tlsv1') || error.message.includes('buffering timed out') || error.message.includes('Could not connect'))) {
+      errorMsg = 'Database connection error: Please make sure your IP is whitelisted in MongoDB Atlas Network Access.';
+    }
+    res.status(500).json({ message: errorMsg });
   }
 };
 
@@ -44,12 +50,18 @@ export const loginUser = async (req, res) => {
         _id: user.id, name: user.name, email: user.email,
         role: user.role, token: generateToken(user._id, user.role),
         profilePhoto: user.profilePhoto,
+        categories: user.categories || [],
       });
     } else {
       res.status(401).json({ message: 'Invalid email or password' });
     }
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Login Error:', error);
+    let errorMsg = error.message;
+    if (error.message && (error.message.includes('SSL') || error.message.includes('tlsv1') || error.message.includes('buffering timed out') || error.message.includes('Could not connect'))) {
+      errorMsg = 'Database connection error: Please make sure your IP is whitelisted in MongoDB Atlas Network Access.';
+    }
+    res.status(500).json({ message: errorMsg });
   }
 };
 
@@ -69,7 +81,7 @@ export const updateProfile = async (req, res) => {
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     const allowed = ['name', 'bio', 'expertise', 'portfolio', 'interests',
-                     'phone', 'website', 'twitter', 'instagram', 'youtube'];
+                     'phone', 'website', 'twitter', 'instagram', 'youtube', 'categories'];
     allowed.forEach(field => {
       if (req.body[field] !== undefined) user[field] = req.body[field];
     });
@@ -91,6 +103,25 @@ export const updateProfile = async (req, res) => {
     await user.save();
     const updated = await User.findById(user._id).select('-password');
     res.json(updated);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const updateCategories = async (req, res) => {
+  try {
+    const { categories } = req.body;
+    if (!Array.isArray(categories)) {
+      return res.status(400).json({ message: 'Categories must be an array' });
+    }
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    user.categories = categories.map(c => typeof c === 'string' ? c.trim() : c).filter(Boolean);
+    await user.save();
+
+    const updated = await User.findById(user._id).select('-password');
+    res.json({ message: 'Categories updated successfully', categories: updated.categories, user: updated });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

@@ -3,11 +3,25 @@ import axios from 'axios';
 import { AuthContext } from '../../context/AuthContext';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
+import { getFieldsForCategory } from '../../utils/categoryFields';
+import DailyGamesBanner from '../../components/DailyGamesBanner';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
+const DEFAULT_CATEGORIES = [
+  'Painting', 'Crochet', 'Baking', 'Cooking', 'Photography', 'Makeup',
+  'Jewellery', 'Embroidery', 'Candle Making', 'Soap Making', 'Pottery',
+  'Fashion Design', 'Music', 'Dance', 'Art & Craft', 'Knitting', 'Home Decor',
+  'Handmade Accessories'
+];
+
 const CreatorDashboard = () => {
   const { user } = useContext(AuthContext);
+
+  const categoryOptions = Array.from(new Set([
+    ...(user?.categories || []),
+    ...DEFAULT_CATEGORIES
+  ]));
 
   const [analytics, setAnalytics] = useState({
     totalWorkshops: 0,
@@ -88,7 +102,15 @@ const CreatorDashboard = () => {
     date: '', time: '', durationMinutes: 60,
     learningObjectives: '', ngrokUrl: ''
   });
-  const [salesForm, setSalesForm] = useState({ title: '', description: '', category: '', price: '', stock: 1, images: null });
+  const [salesForm, setSalesForm] = useState({ 
+    title: '', 
+    description: '', 
+    category: '', 
+    price: '', 
+    stock: 1, 
+    images: null,
+    attributes: {} 
+  });
 
   const handleGoLive = async (workshop) => {
     try {
@@ -147,6 +169,9 @@ const CreatorDashboard = () => {
     formData.append('category', salesForm.category);
     formData.append('price', salesForm.price);
     formData.append('stock', salesForm.stock);
+    if (salesForm.attributes) {
+      formData.append('attributes', JSON.stringify(salesForm.attributes));
+    }
     if(salesForm.images) {
       for(let i = 0; i < salesForm.images.length; i++) {
         formData.append('images', salesForm.images[i]);
@@ -166,7 +191,6 @@ const CreatorDashboard = () => {
       }
       setShowSalesModal(false);
       setEditingProduct(null);
-      // reload page or state (simplified)
       window.location.reload();
     } catch(err) {
       alert('Error saving product: ' + (err.response?.data?.message || err.message));
@@ -194,6 +218,7 @@ const CreatorDashboard = () => {
       category: product.category,
       price: product.price,
       stock: product.stock,
+      attributes: product.attributes ? (typeof product.attributes === 'string' ? JSON.parse(product.attributes) : product.attributes) : {},
       images: null
     });
     setShowSalesModal(true);
@@ -248,54 +273,60 @@ const CreatorDashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-surface py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Welcome, {user?.name}</h1>
-          <div className="flex gap-4">
-            <a href="/dashboard/attendance" className="bg-secondary text-white px-4 py-2 rounded-lg shadow hover:bg-teal-600 transition text-sm">
-              📊 Attendance Reports
-            </a>
-            <a href="/dashboard/analytics" className="bg-purple-600 text-white px-4 py-2 rounded-lg shadow hover:bg-purple-700 transition text-sm">
-              📈 Analytics
-            </a>
-            <button onClick={() => setShowClassModal(true)} className="bg-primary text-white px-4 py-2 rounded-lg shadow hover:bg-blue-700 transition">
-              Create Class
-            </button>
-            <button onClick={() => setShowSalesModal(true)} className="bg-accent text-white px-4 py-2 rounded-lg shadow hover:bg-orange-600 transition">
-              Sales (Add Product)
-            </button>
-            <a href="/profile" className="bg-gray-700 text-white px-4 py-2 rounded-lg shadow hover:bg-gray-900 transition text-sm">
-              👤 My Profile
-            </a>
-          </div>
+    <div className="min-h-screen bg-ambient-blobs py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 z-10 relative">
+        <div className="flex flex-wrap justify-end items-center gap-3 mb-8">
+          <a href="/games" className="bg-amber-500 text-amber-950 px-4 py-2 rounded-xl shadow hover:bg-amber-400 transition text-sm font-extrabold flex items-center gap-1.5">
+            <span>🧩</span> Daily Puzzles
+          </a>
+          <a href="/dashboard/categories" className="bg-indigo-600 text-white px-4 py-2 rounded-xl shadow hover:bg-indigo-700 transition text-sm font-semibold">
+            🏷️ Categories
+          </a>
+          <a href="/dashboard/attendance" className="bg-secondary text-white px-4 py-2 rounded-xl shadow hover:bg-teal-600 transition text-sm font-semibold">
+            📊 Attendance Reports
+          </a>
+          <a href="/dashboard/analytics" className="bg-purple-600 text-white px-4 py-2 rounded-xl shadow hover:bg-purple-700 transition text-sm font-semibold">
+            📈 Analytics
+          </a>
+          <button onClick={() => setShowClassModal(true)} className="bg-primary text-white px-4 py-2 rounded-xl shadow hover:bg-blue-700 transition text-sm font-semibold">
+            + Create Class
+          </button>
+          <button onClick={() => setShowSalesModal(true)} className="bg-accent text-white px-4 py-2 rounded-xl shadow hover:bg-orange-600 transition text-sm font-semibold">
+            + Sell New Product
+          </button>
+          <a href="/profile" className="bg-gray-700 text-white px-4 py-2 rounded-xl shadow hover:bg-gray-900 transition text-sm font-semibold">
+            👤 Profile
+          </a>
         </div>
+
+        {/* Daily Puzzles LinkedIn-style Bar */}
+        <DailyGamesBanner />
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <h3 className="text-sm font-medium text-gray-500">Total Workshops</h3>
-            <p className="text-3xl font-bold text-primary mt-2">{analytics.totalWorkshops}</p>
+          <div className="glass-card p-6 rounded-3xl shadow-sm border border-indigo-100/60">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">Total Workshops</h3>
+            <p className="text-3xl font-black text-primary mt-2">{analytics.totalWorkshops}</p>
           </div>
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <h3 className="text-sm font-medium text-gray-500">Total Students</h3>
-            <p className="text-3xl font-bold text-secondary mt-2">{analytics.totalParticipants}</p>
+          <div className="glass-card p-6 rounded-3xl shadow-sm border border-teal-100/60">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">Total Students</h3>
+            <p className="text-3xl font-black text-secondary mt-2">{analytics.totalParticipants}</p>
           </div>
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <h3 className="text-sm font-medium text-gray-500">Revenue</h3>
-            <p className="text-3xl font-bold text-accent mt-2">${analytics.totalRevenue}</p>
+          <div className="glass-card p-6 rounded-3xl shadow-sm border border-amber-100/60">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">Revenue</h3>
+            <p className="text-3xl font-black text-accent mt-2">₹{analytics.totalRevenue}</p>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-8">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Analytics Overview</h2>
+        <div className="glass-card p-6 rounded-3xl shadow-sm border border-indigo-100/60 mb-8">
+          <h2 className="text-xl font-extrabold text-gray-900 mb-4">Analytics Overview</h2>
           <div className="h-64 flex items-center justify-center">
             <Bar data={chartDataObj} options={chartOptions} />
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-8">
+        <div className="glass-card p-6 rounded-3xl shadow-sm border border-indigo-100/60 mb-8">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold text-gray-900">My Workshops</h2>
+            <h2 className="text-xl font-extrabold text-gray-900">My Workshops</h2>
           </div>
           {myWorkshops.length === 0 ? <p className="text-gray-500">No workshops created.</p> : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
@@ -323,8 +354,26 @@ const CreatorDashboard = () => {
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-8">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold text-gray-900">My Marketplace Products</h2>
+            <button 
+              onClick={() => { setEditingProduct(null); setSalesForm({ title: '', description: '', category: '', price: '', stock: 1, images: null }); setShowSalesModal(true); }} 
+              className="bg-accent text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-orange-600 transition shadow-sm flex items-center gap-1.5"
+            >
+              + Sell New Product
+            </button>
           </div>
-          {myProducts.length === 0 ? <p className="text-gray-500">No products found. Start selling!</p> : (
+          {myProducts.length === 0 ? (
+            <div className="py-8 text-center bg-gray-50 rounded-xl border border-dashed border-gray-200 flex flex-col items-center">
+              <div className="text-3xl mb-2">🛍️</div>
+              <p className="text-gray-600 font-medium text-sm mb-1">No products listed yet.</p>
+              <p className="text-gray-400 text-xs mb-4">Start selling your handmade creations or products on CastNCart Marketplace.</p>
+              <button 
+                onClick={() => { setEditingProduct(null); setSalesForm({ title: '', description: '', category: '', price: '', stock: 1, images: null }); setShowSalesModal(true); }}
+                className="bg-accent text-white px-5 py-2 rounded-xl text-sm font-semibold hover:bg-orange-600 transition shadow"
+              >
+                + Add Product for Sale
+              </button>
+            </div>
+          ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
               {myProducts.map(p => (
                 <div key={p._id} className="border rounded-xl overflow-hidden shadow-sm flex flex-col">
@@ -332,8 +381,18 @@ const CreatorDashboard = () => {
                     {p.images && p.images.length > 0 && <img src={p.images[0].url} alt={p.title} className="w-full h-full object-cover" />}
                   </div>
                   <div className="p-4 flex-1 flex flex-col">
+                    <div className="text-[11px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded w-fit mb-1 border border-amber-200">{p.category}</div>
                     <h3 className="font-bold text-gray-900 mb-1">{p.title}</h3>
-                    <div className="text-sm text-gray-500 mb-4">${p.price} | Stock: {p.stock}</div>
+                    <div className="text-sm text-gray-700 font-extrabold mb-2">₹{p.price} | Stock: {p.stock}</div>
+                    {p.attributes && Object.keys(p.attributes).length > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-3">
+                        {Object.entries(typeof p.attributes === 'string' ? JSON.parse(p.attributes) : p.attributes).slice(0, 3).map(([k, v]) => (
+                          <span key={k} className="text-[10px] bg-slate-100 text-slate-700 font-medium px-1.5 py-0.5 rounded border border-slate-200 capitalize">
+                            {k}: {v}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <div className="mt-auto flex gap-2">
                       <button onClick={() => openEditModal(p)} className="flex-1 bg-gray-100 text-gray-700 py-1 rounded text-sm hover:bg-gray-200">Edit</button>
                       <button onClick={() => handleDeleteProduct(p._id)} className="flex-1 bg-red-100 text-red-600 py-1 rounded text-sm hover:bg-red-200">Delete</button>
@@ -355,8 +414,34 @@ const CreatorDashboard = () => {
                   value={classForm.title || ''} onChange={e => setClassForm({...classForm, title: e.target.value})} />
                 <textarea placeholder="Description" className="border p-2 rounded"
                   value={classForm.description || ''} onChange={e => setClassForm({...classForm, description: e.target.value})}></textarea>
-                <input type="text" placeholder="Category" required className="border p-2 rounded"
-                  value={classForm.category || ''} onChange={e => setClassForm({...classForm, category: e.target.value})} />
+                <div>
+                  <label className="block text-sm font-medium mb-1">Category</label>
+                  <select
+                    required
+                    className="border p-2 rounded w-full bg-white text-gray-800"
+                    value={classForm.category || ''}
+                    onChange={e => setClassForm({...classForm, category: e.target.value})}
+                  >
+                    <option value="">Select Category</option>
+                    {user?.categories && user.categories.length > 0 && (
+                      <optgroup label="My Selected Categories">
+                        {user.categories.map(cat => (
+                          <option key={`my-${cat}`} value={cat}>{cat}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    <optgroup label="All Categories">
+                      {DEFAULT_CATEGORIES.filter(cat => !(user?.categories || []).includes(cat)).map(cat => (
+                        <option key={`def-${cat}`} value={cat}>{cat}</option>
+                      ))}
+                    </optgroup>
+                  </select>
+                  {(!user?.categories || user.categories.length === 0) && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      Tip: You can set your primary skill categories in <a href="/dashboard/categories" className="underline font-semibold">Categories Management</a>.
+                    </p>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <div className="flex-1">
                     <label className="block text-sm font-medium mb-1">Date</label>
@@ -410,30 +495,150 @@ const CreatorDashboard = () => {
 
         {/* Sales (Add/Edit Product) Modal */}
         {showSalesModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white p-6 rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-xl">
-              <h2 className="text-2xl font-bold mb-4 text-textMain">{editingProduct ? 'Edit Product' : 'Add Product for Sale'}</h2>
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white p-6 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-100">
+              <h2 className="text-2xl font-bold mb-4 text-gray-900 border-b pb-3">
+                {editingProduct ? 'Edit Product' : 'Sell a Product'}
+              </h2>
               <form onSubmit={handleCreateSale} className="flex flex-col gap-4">
-                <input type="text" placeholder="Title" required className="border p-2 rounded"
-                  value={salesForm.title || ''} onChange={e => setSalesForm({...salesForm, title: e.target.value})} />
-                <textarea placeholder="Description" className="border p-2 rounded"
-                  value={salesForm.description || ''} onChange={e => setSalesForm({...salesForm, description: e.target.value})}></textarea>
-                <input type="text" placeholder="Category" required className="border p-2 rounded"
-                  value={salesForm.category || ''} onChange={e => setSalesForm({...salesForm, category: e.target.value})} />
-                <div className="flex gap-2">
-                  <input type="number" placeholder="Price" required min="0" className="border p-2 rounded flex-1"
-                    value={salesForm.price || ''} onChange={e => setSalesForm({...salesForm, price: e.target.value})} />
-                  <input type="number" placeholder="Stock" required min="0" className="border p-2 rounded flex-1"
-                    value={salesForm.stock || ''} onChange={e => setSalesForm({...salesForm, stock: e.target.value})} />
-                </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Product Photos (Multiple allowed)</label>
-                  <input type="file" accept="image/*" multiple onChange={e => setSalesForm({...salesForm, images: e.target.files})} className="border p-2 rounded w-full" />
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Product Name</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. Handmade Ceramic Mug / Crochet Scarf" 
+                    required 
+                    className="border p-2.5 rounded-xl w-full text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+                    value={salesForm.title || ''} 
+                    onChange={e => setSalesForm({...salesForm, title: e.target.value})} 
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Product Description</label>
+                  <textarea 
+                    placeholder="Describe your product details, materials, size, etc..." 
+                    rows="3"
+                    required
+                    className="border p-2.5 rounded-xl w-full text-sm focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+                    value={salesForm.description || ''} 
+                    onChange={e => setSalesForm({...salesForm, description: e.target.value})}
+                  ></textarea>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Category</label>
+                  <select
+                    required
+                    className="border p-2.5 rounded-xl w-full bg-white text-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/20"
+                    value={salesForm.category || ''}
+                    onChange={e => setSalesForm({...salesForm, category: e.target.value})}
+                  >
+                    <option value="">Select Category</option>
+                    {user?.categories && user.categories.length > 0 && (
+                      <optgroup label="My Selected Categories">
+                        {user.categories.map(cat => (
+                          <option key={`my-${cat}`} value={cat}>{cat}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    <optgroup label="All Categories">
+                      {DEFAULT_CATEGORIES.filter(cat => !(user?.categories || []).includes(cat)).map(cat => (
+                        <option key={`def-${cat}`} value={cat}>{cat}</option>
+                      ))}
+                    </optgroup>
+                  </select>
+                </div>
+
+                {/* DYNAMIC CATEGORY-SPECIFIC FIELDS */}
+                {salesForm.category && (
+                  <div className="bg-amber-50/60 p-4 rounded-2xl border border-amber-200/70 space-y-3">
+                    <div className="flex items-center justify-between border-b border-amber-200/80 pb-2">
+                      <span className="text-xs font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
+                        ✨ {salesForm.category} Specification Fields
+                      </span>
+                      <span className="text-[11px] text-amber-700">Tailored Product Info</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {getFieldsForCategory(salesForm.category).map(field => (
+                        <div key={field.key} className={field.key === 'ingredients' ? 'sm:col-span-2' : ''}>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1">
+                            {field.label} {field.required && <span className="text-red-500">*</span>}
+                          </label>
+                          <input
+                            type="text"
+                            required={field.required}
+                            placeholder={field.placeholder}
+                            value={salesForm.attributes?.[field.key] || ''}
+                            onChange={e => setSalesForm({
+                              ...salesForm,
+                              attributes: {
+                                ...(salesForm.attributes || {}),
+                                [field.key]: e.target.value
+                              }
+                            })}
+                            className="border p-2.5 rounded-xl w-full text-xs bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Price ($)</label>
+                    <input 
+                      type="number" 
+                      placeholder="e.g. 25" 
+                      required 
+                      min="0" 
+                      step="0.01"
+                      className="border p-2.5 rounded-xl w-full text-sm focus:outline-none focus:ring-2 focus:ring-accent/20"
+                      value={salesForm.price || ''} 
+                      onChange={e => setSalesForm({...salesForm, price: e.target.value})} 
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Stock Quantity</label>
+                    <input 
+                      type="number" 
+                      placeholder="e.g. 10" 
+                      required 
+                      min="0" 
+                      className="border p-2.5 rounded-xl w-full text-sm focus:outline-none focus:ring-2 focus:ring-accent/20"
+                      value={salesForm.stock || ''} 
+                      onChange={e => setSalesForm({...salesForm, stock: e.target.value})} 
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Product Image(s)</label>
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    multiple 
+                    onChange={e => setSalesForm({...salesForm, images: e.target.files})} 
+                    className="border p-2 rounded-xl w-full text-xs bg-gray-50 focus:outline-none" 
+                  />
                   {editingProduct && <p className="text-xs text-gray-500 mt-1">Leave empty to keep existing images.</p>}
                 </div>
-                <div className="flex justify-end gap-2 mt-4">
-                  <button type="button" onClick={() => {setShowSalesModal(false); setEditingProduct(null);}} className="px-4 py-2 text-gray-600 bg-gray-100 rounded hover:bg-gray-200">Cancel</button>
-                  <button type="submit" className="px-4 py-2 bg-accent text-white rounded hover:bg-orange-600">{editingProduct ? 'Save Changes' : 'Add to Sales'}</button>
+
+                <div className="flex justify-end gap-2 mt-4 pt-3 border-t">
+                  <button 
+                    type="button" 
+                    onClick={() => {setShowSalesModal(false); setEditingProduct(null);}} 
+                    className="px-4 py-2 text-gray-600 bg-gray-100 rounded-xl text-sm font-semibold hover:bg-gray-200 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="px-5 py-2 bg-accent text-white rounded-xl text-sm font-semibold hover:bg-orange-600 transition shadow"
+                  >
+                    {editingProduct ? 'Save Changes' : 'Publish Product'}
+                  </button>
                 </div>
               </form>
             </div>
