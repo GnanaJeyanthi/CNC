@@ -361,7 +361,7 @@ export async function processChatbotMessage({ message, user, cart = [] }) {
     }
 
     // ── 14. CUSTOMER / PUBLIC: PRODUCTS SEARCH ───────────────────────────────
-    const isProductQuery = /\b(product|products|item|items|craft|crafts|handmade|buy|shop|shopping|marketplace|store|merchandise|painting|crochet|baking|candle|soap|brush|makeup|kit|jewellery|pottery|resin)\b/i.test(lower);
+    const isProductQuery = /\b(product|products|item|items|craft|crafts|handmade|buy|shop|shopping|marketplace|store|merchandise|painting|crochet|baking|candle|soap|brush|makeup|kit|jewellery|pottery|resin|price|rate|cost|how much)\b/i.test(lower);
     if (isProductQuery) {
       return await handleProductSearch(lower);
     }
@@ -414,7 +414,9 @@ function handleCategoryFieldsQuery(query) {
 // ─────────────────────────────────────────────────────────────────────────────
 async function handleProductSearch(query) {
   const clean = query
-    .replace(/(show me|find|search|get|browse|display|products|product|items|handmade|available|can you show|give me)/gi, '')
+    .replace(/\b(show me|show|find|search|get|browse|display|list|products|product|items|item|handmade|available|can you|give me|give|me|what|are|is|the|all|in|on|of|for|a|an|some|any|do you have|i want|i need|please|tell|about|price|rate|cost|how much)\b/gi, '')
+    .replace(/[?!.,]/g, '')
+    .replace(/\s+/g, ' ')
     .trim();
 
   let filter = {};
@@ -474,7 +476,9 @@ async function handleProductSearch(query) {
 // ─────────────────────────────────────────────────────────────────────────────
 async function handleWorkshopSearch(query, user) {
   const clean = query
-    .replace(/(show me|find|search|get|browse|display|workshops|workshop|classes|class|available|what|are)/gi, '')
+    .replace(/\b(show me|show|find|search|get|browse|display|list|workshops|workshop|classes|class|available|what|are|is|the|all|in|on|of|for|a|an|some|any|can you|give me|give|me|do you have|i want|i need|please|tell|about|upcoming|live|scheduled)\b/gi, '')
+    .replace(/[?!.,]/g, '')
+    .replace(/\s+/g, ' ')
     .trim();
 
   let filter = {};

@@ -4,13 +4,13 @@ import Participant from '../models/Participant.js';
 import Workshop from '../models/Workshop.js';
 import Notification from '../models/Notification.js';
 import crypto from 'crypto';
+import { emitToUser } from '../utils/socket.js';
 
 // Create a new order (Purchase Product / Workshop / Replay / Gift)
 export const createOrder = async (req, res) => {
   try {
     let { items, productId, quantity, giftEmail } = req.body;
 
-    // Support legacy direct product purchase payload
     if (productId) {
       items = [{ itemModel: 'Product', itemId: productId, quantity }];
     }
@@ -20,7 +20,6 @@ export const createOrder = async (req, res) => {
     let creatorId = null;
 
     for (const item of items) {
-      // ── Product ──────────────────────────────────────────────────────────────
       if (item.itemModel === 'Product') {
         const product = await Product.findById(item.itemId);
         if (!product) return res.status(404).json({ message: 'Product not found' });
@@ -33,7 +32,6 @@ export const createOrder = async (req, res) => {
         product.stock -= item.quantity;
         await product.save();
 
-      // ── Workshop (self or gift) ───────────────────────────────────────────────
       } else if (item.itemModel === 'Workshop') {
         const workshop = await Workshop.findById(item.itemId);
         if (!workshop) return res.status(404).json({ message: 'Workshop not found' });
@@ -41,7 +39,6 @@ export const createOrder = async (req, res) => {
         const isGift = !!(giftEmail && giftEmail.trim());
 
         if (!isGift) {
-          // Self purchase — check not already enrolled
           const existing = await Participant.findOne({ workshopId: workshop._id, userId: req.user._id });
           if (existing) return res.status(400).json({ message: `Already joined ${workshop.title}` });
         }
@@ -51,7 +48,6 @@ export const createOrder = async (req, res) => {
           return res.status(400).json({ message: `${workshop.title} is full` });
         }
 
-        // Effective price (early bird)
         const now = new Date();
         const effectivePrice =
           workshop.earlyBirdPrice != null &&
@@ -65,17 +61,15 @@ export const createOrder = async (req, res) => {
         processedItems.push({ itemModel: 'Workshop', itemId: workshop._id, quantity: item.quantity, price: effectivePrice });
 
         if (isGift) {
-          // Create a placeholder participant for the gift recipient
           const giftToken = crypto.randomBytes(24).toString('hex');
           await Participant.create({
             workshopId: workshop._id,
-            userId: req.user._id,  // placeholder — will be reassigned on claim
+            userId: req.user._id,
             giftedByUserId: req.user._id,
             giftEmail: giftEmail.trim().toLowerCase(),
             giftToken,
             giftClaimed: false,
           });
-          // Notify the gifter
           await Notification.create({
             userId: req.user._id,
             type: 'order_confirmed',
@@ -85,7 +79,6 @@ export const createOrder = async (req, res) => {
           });
         } else {
           await Participant.create({ workshopId: workshop._id, userId: req.user._id });
-          // Enrollment notification
           if (workshop.scheduledDate) {
             await Notification.create({
               userId: req.user._id,
@@ -97,7 +90,6 @@ export const createOrder = async (req, res) => {
           }
         }
 
-      // ── Replay purchase ───────────────────────────────────────────────────────
       } else if (item.itemModel === 'Replay') {
         const workshop = await Workshop.findById(item.itemId);
         if (!workshop) return res.status(404).json({ message: 'Workshop not found' });
@@ -120,7 +112,9 @@ export const createOrder = async (req, res) => {
       creatorId,
       items: processedItems,
       totalAmount,
-      status: 'paid',
+      paymentStatus: 'Paid',
+      orderStatus: 'Order Confirmed',
+      status: 'Order Confirmed',
     });
 
     res.status(201).json(order);
@@ -129,52 +123,196 @@ export const createOrder = async (req, res) => {
   }
 };
 
-// Get orders for a creator's products
+// Get orders for creator's products (Authenticated Creator)
 export const getCreatorOrders = async (req, res) => {
   try {
+    const creatorId = req.params.id || req.user._id;
+
+    // Enforce authorization: creators can only view their own orders
+    if (creatorId.toString() !== req.user._id.toString() && req.user.role?.toLowerCase() === 'creator') {
+      return res.status(403).json({ message: 'Not authorized to view these orders' });
+    }
+
+    const targetCreatorId = req.user._id;
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
+    const limit = parseInt(req.query.limit) || 100;
     const skip = (page - 1) * limit;
-    const statusFilter = req.query.status ? { status: req.query.status } : {};
-    const query = { creatorId: req.params.id, ...statusFilter };
+    
+    const query = { creatorId: targetCreatorId };
+    if (req.query.status) {
+      query.$or = [{ orderStatus: req.query.status }, { status: req.query.status }];
+    }
+
     const [orders, total] = await Promise.all([
       Order.find(query)
         .populate('buyerId', 'name email')
-        .populate('items.itemId', 'title')
+        .populate('items.itemId', 'title images price')
         .sort({ createdAt: -1 })
         .skip(skip).limit(limit),
       Order.countDocuments(query),
     ]);
+
     res.json({ orders, total, page, pages: Math.ceil(total / limit) });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-// Update order status
+// Valid Order Lifecycle Status transitions
+const VALID_TRANSITIONS = {
+  'Order Confirmed': ['Preparing', 'Cancelled'],
+  'Preparing': ['Shipped', 'Cancelled'],
+  'Shipped': ['Out for Delivery', 'Cancelled'],
+  'Out for Delivery': ['Delivered', 'Cancelled'],
+  'Delivered': ['Customer Confirmed Received'],
+  'paid': ['Preparing', 'Order Confirmed'],
+};
+
+// Creator updates Order status
 export const updateOrderStatus = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id);
+    const { status: newStatus } = req.body;
+    if (!newStatus) {
+      return res.status(400).json({ message: 'Status is required' });
+    }
+
+    const order = await Order.findById(req.params.id)
+      .populate('buyerId', 'name email')
+      .populate('items.itemId', 'title images price');
+
     if (!order) return res.status(404).json({ message: 'Order not found' });
     if (order.creatorId.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Not authorized' });
+      return res.status(403).json({ message: 'Not authorized to manage this order' });
     }
-    order.status = req.body.status;
+
+    const currentStatus = order.orderStatus || order.status || 'Order Confirmed';
+    const allowed = VALID_TRANSITIONS[currentStatus] || [];
+
+    if (!allowed.includes(newStatus) && newStatus !== currentStatus) {
+      return res.status(400).json({
+        message: `Invalid status transition from "${currentStatus}" to "${newStatus}". Allowed next step: ${allowed.join(', ') || 'None'}`
+      });
+    }
+
+    order.orderStatus = newStatus;
+    order.status = newStatus;
     await order.save();
-    res.json(order);
+
+    const shortOrderId = order._id.toString().slice(-8).toUpperCase();
+    let notifType = 'ORDER_CONFIRMED';
+    let notifTitle = `Order #${shortOrderId} Status Updated`;
+    let notifMsg = `Your order #${shortOrderId} status is now: ${newStatus}`;
+
+    if (newStatus === 'Preparing') {
+      notifType = 'ORDER_PREPARING';
+      notifTitle = `Order #${shortOrderId} is being prepared`;
+      notifMsg = `Your order #${shortOrderId} is being prepared by the creator.`;
+    } else if (newStatus === 'Shipped') {
+      notifType = 'ORDER_SHIPPED';
+      notifTitle = `Order #${shortOrderId} has been shipped`;
+      notifMsg = `Your order #${shortOrderId} has been shipped.`;
+    } else if (newStatus === 'Out for Delivery') {
+      notifType = 'ORDER_OUT_FOR_DELIVERY';
+      notifTitle = `Order #${shortOrderId} is out for delivery`;
+      notifMsg = `Your order #${shortOrderId} is out for delivery!`;
+    } else if (newStatus === 'Delivered') {
+      notifType = 'ORDER_DELIVERED';
+      notifTitle = `Order #${shortOrderId} has been delivered`;
+      notifMsg = `Your order #${shortOrderId} has been delivered. Please confirm receipt!`;
+    }
+
+    // Persistent Notification for Customer
+    const buyerNotif = await Notification.create({
+      userId: order.buyerId._id || order.buyerId,
+      senderId: req.user._id,
+      orderId: order._id,
+      type: notifType,
+      title: notifTitle,
+      message: notifMsg,
+      link: '/dashboard/user',
+    });
+
+    // Real-time Socket Event to Customer
+    emitToUser(order.buyerId._id || order.buyerId, 'order_status_updated', {
+      order,
+      notification: buyerNotif,
+    });
+
+    res.json({ success: true, order, notification: buyerNotif });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-// Get all orders for the logged-in buyer (Order History)
+// Customer confirms order received
+export const confirmOrderReceived = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id)
+      .populate('buyerId', 'name email')
+      .populate('items.itemId', 'title images price');
+
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+
+    // Verify logged in customer owns the order
+    if (order.buyerId._id.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized to confirm this order' });
+    }
+
+    const currentStatus = order.orderStatus || order.status;
+    if (currentStatus !== 'Delivered' && currentStatus !== 'shipped' && currentStatus !== 'completed') {
+      return res.status(400).json({ message: `Cannot confirm receipt until order is Delivered (current status: ${currentStatus})` });
+    }
+
+    if (order.customerReceived || currentStatus === 'Customer Confirmed Received') {
+      return res.status(400).json({ message: 'Order receipt already confirmed' });
+    }
+
+    order.orderStatus = 'Customer Confirmed Received';
+    order.status = 'Customer Confirmed Received';
+    order.customerReceived = true;
+    order.customerReceivedAt = new Date();
+    await order.save();
+
+    const shortOrderId = order._id.toString().slice(-8).toUpperCase();
+    const customerName = req.user.name || 'Customer';
+
+    // Persistent Notification for Creator
+    const creatorNotif = await Notification.create({
+      userId: order.creatorId,
+      senderId: req.user._id,
+      orderId: order._id,
+      type: 'ORDER_RECEIVED_CONFIRMED',
+      title: 'Order Received Confirmation',
+      message: `${customerName} has confirmed that order #${shortOrderId} was received successfully!`,
+      link: '/dashboard/creator',
+    });
+
+    // Real-time Socket Event to Creator
+    emitToUser(order.creatorId, 'customer_confirmed_received', {
+      order,
+      notification: creatorNotif,
+    });
+
+    res.json({
+      success: true,
+      order,
+      message: 'Order receipt confirmed successfully!',
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Get all orders for logged-in buyer (Order History)
 export const getMyOrders = async (req, res) => {
   try {
     const orders = await Order.find({ buyerId: req.user._id })
       .populate('items.itemId', 'title images price')
+      .populate('creatorId', 'name email')
       .sort({ createdAt: -1 });
     res.json(orders);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
+

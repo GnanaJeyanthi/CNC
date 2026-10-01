@@ -1,7 +1,8 @@
 import React, { useContext, useEffect, useState } from 'react';
 import axios from 'axios';
 import { AuthContext } from '../../context/AuthContext';
-import { Play, Calendar, Star, Package, Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { SocketContext } from '../../context/SocketContext';
+import { Play, Calendar, Star, Package, Clock, CheckCircle, XCircle, AlertCircle, Truck, MapPin, Home, CheckCircle2 } from 'lucide-react';
 import DailyGamesBanner from '../../components/DailyGamesBanner';
 
 const statusColors = {
@@ -19,8 +20,24 @@ const statusIcons = {
 
 const TABS = ['Overview', 'Recorded Videos 📹', 'Attendance History', 'Order History'];
 
+const TRACKING_STEPS = [
+  { id: 'Order Confirmed', label: 'Confirmed', icon: '✅' },
+  { id: 'Preparing', label: 'Preparing', icon: '📦' },
+  { id: 'Shipped', label: 'Shipped', icon: '🚀' },
+  { id: 'Out for Delivery', label: 'Out for Delivery', icon: '🚚' },
+  { id: 'Delivered', label: 'Delivered', icon: '🏠' },
+  { id: 'Customer Confirmed Received', label: 'Order Received', icon: '🎉' },
+];
+
+const getStepIndex = (status) => {
+  if (status === 'paid') return 0;
+  const idx = TRACKING_STEPS.findIndex(s => s.id === status);
+  return idx >= 0 ? idx : 0;
+};
+
 const UserDashboard = () => {
   const { user } = useContext(AuthContext);
+  const { socket } = useContext(SocketContext);
   const [activeTab, setActiveTab] = useState('Overview');
   const [data, setData] = useState({
     upcomingWorkshops: [],
@@ -33,6 +50,13 @@ const UserDashboard = () => {
   const [orders, setOrders] = useState([]);
 
   const headers = { Authorization: `Bearer ${user?.token}` };
+
+  const fetchMyOrders = () => {
+    if (!user) return;
+    axios.get('http://localhost:5000/api/orders/my-orders', { headers })
+      .then(r => setOrders(r.data))
+      .catch(console.error);
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -51,10 +75,37 @@ const UserDashboard = () => {
 
   useEffect(() => {
     if (!user || activeTab !== 'Order History') return;
-    axios.get('http://localhost:5000/api/orders/my-orders', { headers })
-      .then(r => setOrders(r.data))
-      .catch(console.error);
+    fetchMyOrders();
   }, [user, activeTab]);
+
+  // Real-time socket updates for Customer Order Status
+  useEffect(() => {
+    if (!socket || !user) return;
+    const handleOrderUpdate = () => {
+      fetchMyOrders();
+    };
+
+    socket.on('order_status_updated', handleOrderUpdate);
+    socket.on('payment_success', handleOrderUpdate);
+
+    return () => {
+      socket.off('order_status_updated', handleOrderUpdate);
+      socket.off('payment_success', handleOrderUpdate);
+    };
+  }, [socket, user]);
+
+  const handleConfirmReceived = async (orderId) => {
+    try {
+      const { data: res } = await axios.post(
+        `http://localhost:5000/api/orders/${orderId}/confirm-received`,
+        {},
+        { headers }
+      );
+      setOrders(prev => prev.map(o => o._id === orderId ? res.order : o));
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to confirm order receipt');
+    }
+  };
 
   const handleJoin = async (id) => {
     try {
@@ -359,114 +410,171 @@ const UserDashboard = () => {
           </div>
         )}
 
-        {/* ── Order History Tab ─────────────────────────────────────────────── */}
+        {/* ── Order History & Real-Time Tracking Tab ───────────────────────── */}
         {activeTab === 'Order History' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-6 border-b flex items-center justify-between">
+          <div className="space-y-6">
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Order History</h2>
-                <p className="text-sm text-gray-500 mt-0.5">All your product purchases with payment details.</p>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-2xl font-black text-gray-900">My Orders & Live Tracking</h2>
+                  <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Live Updates
+                  </span>
+                </div>
+                <p className="text-sm text-gray-500 mt-1">Track order preparation, shipping progress, and confirm order receipts.</p>
               </div>
-              <a href="/marketplace" className="text-sm bg-accent text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition font-medium">
-                Shop More →
+              <a href="/marketplace" className="text-sm bg-accent text-white px-5 py-2.5 rounded-xl hover:bg-orange-600 transition font-bold shadow-sm flex items-center gap-1">
+                Shop Marketplace →
               </a>
             </div>
 
             {orders.length === 0 ? (
-              <div className="text-center py-16">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Package className="w-8 h-8 text-gray-400" />
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                  🛍️
                 </div>
-                <h3 className="text-lg font-semibold text-gray-700 mb-1">No orders yet</h3>
-                <p className="text-gray-400 text-sm">Your purchased products will appear here after payment.</p>
+                <h3 className="text-lg font-bold text-gray-800 mb-1">No Orders Placed Yet</h3>
+                <p className="text-gray-400 text-sm mb-4">Your purchased items will appear here with live real-time order tracking.</p>
+                <a href="/marketplace" className="inline-block bg-primary text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow hover:bg-blue-700 transition">
+                  Explore Products
+                </a>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="text-left px-6 py-3 text-gray-500 font-medium">Product</th>
-                      <th className="text-left px-6 py-3 text-gray-500 font-medium">Order ID</th>
-                      <th className="text-left px-6 py-3 text-gray-500 font-medium">Date</th>
-                      <th className="text-center px-6 py-3 text-gray-500 font-medium">Status</th>
-                      <th className="text-left px-6 py-3 text-gray-500 font-medium">Payment ID</th>
-                      <th className="text-right px-6 py-3 text-gray-500 font-medium">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {orders.map(order => (
-                      <tr key={order._id} className="hover:bg-gray-50 transition-colors">
-                        {/* Product name + thumbnail */}
-                        <td className="px-6 py-4">
-                          <div className="space-y-1">
-                            {order.items.map(item => (
-                              <div key={item._id} className="flex items-center gap-3">
-                                {item.itemId?.images?.[0]?.url ? (
-                                  <img
-                                    src={item.itemId.images[0].url}
-                                    alt={item.itemId?.title}
-                                    className="w-10 h-10 rounded-lg object-cover border border-gray-100 flex-shrink-0"
-                                  />
-                                ) : (
-                                  <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-                                    <Package className="w-5 h-5 text-gray-400" />
-                                  </div>
-                                )}
-                                <div>
-                                  <div className="font-medium text-gray-900">{item.itemId?.title || 'Item'}</div>
-                                  <div className="text-xs text-gray-400">Qty: {item.quantity} · ₹{item.price} each</div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </td>
-                        {/* Short order ID */}
-                        <td className="px-6 py-4 text-gray-400 text-xs font-mono">
-                          #{order._id.slice(-8).toUpperCase()}
-                        </td>
-                        {/* Date */}
-                        <td className="px-6 py-4 text-gray-500 text-xs">
-                          {new Date(order.createdAt).toLocaleDateString('en-IN', {
-                            day: '2-digit', month: 'short', year: 'numeric'
-                          })}
-                        </td>
-                        {/* Status badge */}
-                        <td className="px-6 py-4 text-center">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                            order.status === 'paid'      ? 'bg-green-100 text-green-700' :
-                            order.status === 'pending'   ? 'bg-yellow-100 text-yellow-700' :
-                            order.status === 'shipped'   ? 'bg-blue-100 text-blue-700' :
-                            order.status === 'completed' ? 'bg-purple-100 text-purple-700' :
-                            order.status === 'cancelled' ? 'bg-red-100 text-red-600' :
-                            'bg-gray-100 text-gray-600'
-                          }`}>
-                            {order.status === 'paid'      && '✅ '}
-                            {order.status === 'pending'   && '⏳ '}
-                            {order.status === 'shipped'   && '📦 '}
-                            {order.status === 'completed' && '🎉 '}
-                            {order.status === 'cancelled' && '❌ '}
-                            {order.status}
+              orders.map(order => {
+                const currentStatus = order.orderStatus || order.status || 'Order Confirmed';
+                const currentStepIdx = getStepIndex(currentStatus);
+                const shortId = order._id.slice(-8).toUpperCase();
+                const creatorName = order.creatorId?.name || 'Creator';
+                const orderDate = new Date(order.createdAt).toLocaleString('en-IN', {
+                  day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                });
+
+                return (
+                  <div key={order._id} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-6">
+                    {/* Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-indigo-600 text-base">#{shortId}</span>
+                          <span className="text-xs text-gray-300">•</span>
+                          <span className="text-xs font-semibold text-gray-500">{orderDate}</span>
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            Payment: Paid
                           </span>
-                        </td>
-                        {/* Razorpay Payment ID */}
-                        <td className="px-6 py-4">
-                          {order.razorpayPaymentId ? (
-                            <span className="text-xs font-mono text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">
-                              {order.razorpayPaymentId}
+                        </div>
+                        <div className="text-xs text-gray-600 mt-1 font-medium">
+                          Seller: <span className="font-bold text-gray-800">{creatorName}</span>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <div className="text-xs text-gray-400 font-medium">Total Amount</div>
+                        <div className="text-xl font-black text-gray-900">₹{order.totalAmount.toLocaleString('en-IN')}</div>
+                      </div>
+                    </div>
+
+                    {/* Stepper Progress Timeline */}
+                    <div className="py-2">
+                      <div className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-4">Order Progress & Status</div>
+                      <div className="relative flex items-center justify-between">
+                        {/* Connecting Line */}
+                        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 bg-gray-100 z-0 rounded"></div>
+                        <div
+                          className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-indigo-600 z-0 transition-all duration-500 rounded"
+                          style={{
+                            width: `${(currentStepIdx / (TRACKING_STEPS.length - 1)) * 100}%`
+                          }}
+                        ></div>
+
+                        {/* Steps */}
+                        {TRACKING_STEPS.map((step, idx) => {
+                          const isCompleted = idx <= currentStepIdx;
+                          const isCurrent = idx === currentStepIdx;
+
+                          return (
+                            <div key={step.id} className="relative z-10 flex flex-col items-center">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 border-2 ${
+                                isCompleted
+                                  ? 'bg-indigo-600 border-indigo-600 text-white shadow-md'
+                                  : 'bg-white border-gray-300 text-gray-400'
+                              } ${isCurrent ? 'ring-4 ring-indigo-100 scale-110' : ''}`}>
+                                {isCompleted ? step.icon : idx + 1}
+                              </div>
+                              <span className={`text-[11px] mt-2 font-bold text-center hidden md:block max-w-[80px] ${
+                                isCurrent ? 'text-indigo-600' : isCompleted ? 'text-gray-800' : 'text-gray-400'
+                              }`}>
+                                {step.label}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Current Status highlight pill */}
+                      <div className="mt-6 flex items-center justify-between bg-indigo-50/70 p-3 rounded-xl border border-indigo-100">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">{TRACKING_STEPS[currentStepIdx]?.icon || '📦'}</span>
+                          <div>
+                            <span className="text-xs text-gray-500 font-medium">Current Status: </span>
+                            <span className="text-xs font-black text-indigo-900 uppercase tracking-wide">
+                              {currentStatus}
                             </span>
-                          ) : (
-                            <span className="text-xs text-gray-300">—</span>
-                          )}
-                        </td>
-                        {/* Total */}
-                        <td className="px-6 py-4 text-right font-black text-gray-900 text-base">
-                          ₹{order.totalAmount.toLocaleString('en-IN')}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                          </div>
+                        </div>
+
+                        {order.razorpayPaymentId && (
+                          <div className="text-[11px] font-mono text-indigo-700 bg-white px-2.5 py-1 rounded-md border border-indigo-200">
+                            ID: {order.razorpayPaymentId}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Items List */}
+                    <div className="space-y-3 pt-2">
+                      <div className="text-xs font-bold text-gray-500">Purchased Items</div>
+                      {order.items.map(item => (
+                        <div key={item._id} className="flex items-center justify-between gap-4 bg-gray-50 p-3 rounded-xl">
+                          <div className="flex items-center gap-3">
+                            {item.itemId?.images?.[0]?.url ? (
+                              <img src={item.itemId.images[0].url} alt={item.itemId?.title} className="w-12 h-12 rounded-lg object-cover border flex-shrink-0" />
+                            ) : (
+                              <div className="w-12 h-12 rounded-lg bg-gray-200 flex items-center justify-center flex-shrink-0 text-xl">🛍️</div>
+                            )}
+                            <div>
+                              <div className="font-bold text-gray-900 text-sm">{item.itemId?.title || 'Product Item'}</div>
+                              <div className="text-xs text-gray-500">Quantity: <span className="font-bold text-gray-800">{item.quantity}</span> · Price: ₹{item.price}</div>
+                            </div>
+                          </div>
+                          <div className="font-bold text-gray-900 text-sm">₹{(item.quantity * item.price).toLocaleString('en-IN')}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Customer Action Button: Confirm Received */}
+                    <div className="pt-4 border-t border-gray-100 flex items-center justify-end">
+                      {currentStatus === 'Delivered' && (
+                        <button
+                          onClick={() => handleConfirmReceived(order._id)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm px-6 py-2.5 rounded-xl shadow-md transition flex items-center gap-2 transform hover:-translate-y-0.5"
+                        >
+                          <span>✓</span> Yes, I Received My Order
+                        </button>
+                      )}
+
+                      {order.customerReceived || currentStatus === 'Customer Confirmed Received' ? (
+                        <div className="bg-emerald-50 border border-emerald-300 text-emerald-800 font-extrabold text-xs px-4 py-2.5 rounded-xl flex items-center gap-2">
+                          <span>🎉</span> Order Received Confirmed {order.customerReceivedAt && `on ${new Date(order.customerReceivedAt).toLocaleDateString('en-IN')}`}
+                        </div>
+                      ) : currentStatus !== 'Delivered' && (
+                        <div className="text-xs text-gray-400 font-medium italic">
+                          "Confirm Order Received" button will activate once status is Delivered.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
         )}

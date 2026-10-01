@@ -26,6 +26,17 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const googleLogin = async (credential) => {
+    try {
+      const { data } = await axios.post('http://localhost:5000/api/auth/google', { credential });
+      setUser(data);
+      localStorage.setItem('userInfo', JSON.stringify(data));
+      return data;
+    } catch (error) {
+      throw error.response?.data?.message || error.message || 'Google login failed';
+    }
+  };
+
   const register = async (userData) => {
     try {
       const { data } = await axios.post('http://localhost:5000/api/auth/register', userData);
@@ -49,8 +60,9 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, setUser, updateUser, login, register, logout, loading }}>
+    <AuthContext.Provider value={{ user, setUser, updateUser, login, googleLogin, register, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );
 };
+

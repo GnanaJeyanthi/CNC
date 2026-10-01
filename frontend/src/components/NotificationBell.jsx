@@ -2,22 +2,31 @@ import React, { useState, useEffect, useRef, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
+import { SocketContext } from '../context/SocketContext';
 
 const API = 'http://localhost:5000/api';
 
 const typeIcon = {
-  workshop_reminder:  '📅',
-  workshop_live:      '🔴',
-  replay_published:   '🎬',
-  certificate_ready:  '🎓',
-  order_confirmed:    '✅',
-  waitlist_promoted:  '🎉',
-  gift_received:      '🎁',
-  review_reminder:    '⭐',
+  NEW_ORDER:                '🛍️',
+  ORDER_CONFIRMED:          '✅',
+  ORDER_PREPARING:          '📦',
+  ORDER_SHIPPED:            '🚀',
+  ORDER_OUT_FOR_DELIVERY:   '🚚',
+  ORDER_DELIVERED:          '🏠',
+  ORDER_RECEIVED_CONFIRMED: '🎉',
+  workshop_reminder:        '📅',
+  workshop_live:            '🔴',
+  replay_published:         '🎬',
+  certificate_ready:        '🎓',
+  order_confirmed:          '✅',
+  waitlist_promoted:        '🎉',
+  gift_received:            '🎁',
+  review_reminder:          '⭐',
 };
 
 export default function NotificationBell() {
   const { user } = useContext(AuthContext);
+  const { socket } = useContext(SocketContext);
   const navigate  = useNavigate();
   const [open, setOpen]              = useState(false);
   const [notifications, setNotifications] = useState([]);
@@ -40,6 +49,26 @@ export default function NotificationBell() {
     const interval = setInterval(fetchNotifications, 30000); // poll every 30s
     return () => clearInterval(interval);
   }, [user]);
+
+  // Real-time socket listener for instant notification refresh
+  useEffect(() => {
+    if (!socket) return;
+    const handleNotifEvent = () => {
+      fetchNotifications();
+    };
+
+    socket.on('new_order', handleNotifEvent);
+    socket.on('order_status_updated', handleNotifEvent);
+    socket.on('customer_confirmed_received', handleNotifEvent);
+    socket.on('payment_success', handleNotifEvent);
+
+    return () => {
+      socket.off('new_order', handleNotifEvent);
+      socket.off('order_status_updated', handleNotifEvent);
+      socket.off('customer_confirmed_received', handleNotifEvent);
+      socket.off('payment_success', handleNotifEvent);
+    };
+  }, [socket]);
 
   // Close on outside click
   useEffect(() => {

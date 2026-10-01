@@ -1,6 +1,7 @@
 import React, { useContext, useState, useEffect } from 'react';
 import axios from 'axios';
 import { AuthContext } from '../../context/AuthContext';
+import { SocketContext } from '../../context/SocketContext';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 import { getFieldsForCategory } from '../../utils/categoryFields';
@@ -17,6 +18,7 @@ const DEFAULT_CATEGORIES = [
 
 const CreatorDashboard = () => {
   const { user } = useContext(AuthContext);
+  const { socket } = useContext(SocketContext);
 
   const categoryOptions = Array.from(new Set([
     ...(user?.categories || []),
@@ -32,6 +34,9 @@ const CreatorDashboard = () => {
   });
   const [myProducts, setMyProducts] = useState([]);
   const [myWorkshops, setMyWorkshops] = useState([]);
+  const [creatorOrders, setCreatorOrders] = useState([]);
+  const [orderFilter, setOrderFilter] = useState('ALL');
+  const [myPurchases, setMyPurchases] = useState([]);
   const [editingProduct, setEditingProduct] = useState(null);
   
   const [showContentModal, setShowContentModal] = useState(false);
@@ -87,10 +92,84 @@ const CreatorDashboard = () => {
       }
     };
 
+    const fetchCreatorOrders = async () => {
+      if (user && user._id) {
+        try {
+          const { data } = await axios.get(`http://localhost:5000/api/orders/creator/${user._id}`, {
+            headers: { Authorization: `Bearer ${user.token}` }
+          });
+          const orderList = Array.isArray(data) ? data : (data.orders || []);
+          setCreatorOrders(orderList);
+        } catch(err) { console.error("Failed to fetch creator orders:", err); }
+      }
+    };
+
+    const fetchMyPurchases = async () => {
+      if (user) {
+        try {
+          const { data } = await axios.get('http://localhost:5000/api/orders/my-orders', {
+            headers: { Authorization: `Bearer ${user.token}` }
+          });
+          setMyPurchases(Array.isArray(data) ? data : []);
+        } catch(err) { console.error("Failed to fetch my purchases:", err); }
+      }
+    };
+
     fetchAnalytics();
     fetchProducts();
     fetchWorkshops();
+    fetchCreatorOrders();
+    fetchMyPurchases();
   }, [user]);
+
+  // Real-time Socket.IO event listeners for Creator Orders
+  useEffect(() => {
+    if (!socket || !user) return;
+    const handleOrderChange = () => {
+      if (user && user._id) {
+        axios.get(`http://localhost:5000/api/orders/creator/${user._id}`, {
+          headers: { Authorization: `Bearer ${user.token}` }
+        }).then(r => {
+          const orderList = Array.isArray(r.data) ? r.data : (r.data.orders || []);
+          setCreatorOrders(orderList);
+        }).catch(console.error);
+      }
+    };
+
+    socket.on('new_order', handleOrderChange);
+    socket.on('customer_confirmed_received', handleOrderChange);
+
+    return () => {
+      socket.off('new_order', handleOrderChange);
+      socket.off('customer_confirmed_received', handleOrderChange);
+    };
+  }, [socket, user]);
+
+  const handleConfirmPurchaseReceived = async (orderId) => {
+    try {
+      const { data: res } = await axios.post(
+        `http://localhost:5000/api/orders/${orderId}/confirm-received`,
+        {},
+        { headers: { Authorization: `Bearer ${user.token}` } }
+      );
+      setMyPurchases(prev => prev.map(o => o._id === orderId ? res.order : o));
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to confirm order receipt');
+    }
+  };
+
+  const handleUpdateOrderStatus = async (orderId, nextStatus) => {
+    try {
+      const { data } = await axios.patch(
+        `http://localhost:5000/api/orders/${orderId}/status`,
+        { status: nextStatus },
+        { headers: { Authorization: `Bearer ${user.token}` } }
+      );
+      setCreatorOrders(prev => prev.map(o => o._id === orderId ? data.order : o));
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to update order status');
+    }
+  };
 
   const [showClassModal, setShowClassModal] = useState(false);
   const [showSalesModal, setShowSalesModal] = useState(false);
@@ -400,6 +479,257 @@ const CreatorDashboard = () => {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* Customer Orders & Fulfillment Management Section */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-extrabold text-gray-900">Customer Orders & Fulfillment</h2>
+                <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 animate-pulse">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Live Real-Time
+                </span>
+              </div>
+              <p className="text-gray-500 text-xs mt-1">Manage sales orders, update shipping stages, and track customer receipts.</p>
+            </div>
+
+            {/* Filter buttons */}
+            <div className="flex flex-wrap gap-1 bg-gray-100 p-1 rounded-xl text-xs font-semibold">
+              {['ALL', 'Order Confirmed', 'Preparing', 'Shipped', 'Out for Delivery', 'Delivered', 'Customer Confirmed Received'].map(st => (
+                <button
+                  key={st}
+                  onClick={() => setOrderFilter(st)}
+                  className={`px-3 py-1.5 rounded-lg transition ${
+                    orderFilter === st ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  {st === 'ALL' ? 'All Orders' : st}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {creatorOrders.length === 0 ? (
+            <div className="py-12 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+              <div className="text-4xl mb-3">📦</div>
+              <p className="text-gray-700 font-bold text-base mb-1">No Customer Orders Yet</p>
+              <p className="text-gray-400 text-xs">When customers purchase your products, orders will appear here automatically in real time.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {creatorOrders
+                .filter(o => orderFilter === 'ALL' || o.orderStatus === orderFilter || o.status === orderFilter)
+                .map(order => {
+                  const currentStatus = order.orderStatus || order.status || 'Order Confirmed';
+                  const shortId = order._id.slice(-8).toUpperCase();
+                  const buyerName = order.buyerId?.name || 'Customer';
+                  const buyerEmail = order.buyerId?.email || '';
+                  const orderDate = new Date(order.createdAt).toLocaleString('en-IN', {
+                    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                  });
+
+                  return (
+                    <div key={order._id} className="border border-gray-200 rounded-2xl p-5 hover:border-indigo-300 transition bg-white shadow-sm">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 mb-4 border-b border-gray-100">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-indigo-600 text-sm">#{shortId}</span>
+                            <span className="text-xs text-gray-400">·</span>
+                            <span className="text-xs font-semibold text-gray-500">{orderDate}</span>
+                            <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              Payment: Paid
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-700 font-medium mt-1">
+                            Buyer: <span className="font-bold text-gray-900">{buyerName}</span> {buyerEmail && <span className="text-gray-400">({buyerEmail})</span>}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <span className={`px-3 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-wide ${
+                            currentStatus === 'Customer Confirmed Received' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' :
+                            currentStatus === 'Delivered' ? 'bg-teal-100 text-teal-800' :
+                            currentStatus === 'Out for Delivery' ? 'bg-amber-100 text-amber-800' :
+                            currentStatus === 'Shipped' ? 'bg-indigo-100 text-indigo-800' :
+                            currentStatus === 'Preparing' ? 'bg-blue-100 text-blue-800' :
+                            'bg-sky-100 text-sky-800'
+                          }`}>
+                            Status: {currentStatus}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Items */}
+                      <div className="space-y-3 mb-4">
+                        {order.items.map(item => (
+                          <div key={item._id} className="flex items-center justify-between gap-4 bg-gray-50 p-3 rounded-xl">
+                            <div className="flex items-center gap-3">
+                              {item.itemId?.images?.[0]?.url ? (
+                                <img src={item.itemId.images[0].url} alt={item.itemId?.title} className="w-12 h-12 rounded-lg object-cover border flex-shrink-0" />
+                              ) : (
+                                <div className="w-12 h-12 rounded-lg bg-gray-200 flex items-center justify-center flex-shrink-0 text-xl">🛍️</div>
+                              )}
+                              <div>
+                                <div className="font-bold text-gray-900 text-sm">{item.itemId?.title || 'Product'}</div>
+                                <div className="text-xs text-gray-500">Qty: <span className="font-bold text-gray-800">{item.quantity}</span> × ₹{item.price}</div>
+                              </div>
+                            </div>
+                            <div className="font-black text-gray-900 text-base">₹{(item.quantity * item.price).toLocaleString('en-IN')}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Status Update Action Controls */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-gray-100">
+                        <div className="text-xs text-gray-500 font-medium">
+                          Total Revenue: <span className="font-black text-gray-900 text-sm">₹{order.totalAmount.toLocaleString('en-IN')}</span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {(currentStatus === 'Order Confirmed' || currentStatus === 'paid') && (
+                            <button
+                              onClick={() => handleUpdateOrderStatus(order._id, 'Preparing')}
+                              className="bg-indigo-600 text-white hover:bg-indigo-700 px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5"
+                            >
+                              📦 Mark as Preparing
+                            </button>
+                          )}
+
+                          {currentStatus === 'Preparing' && (
+                            <button
+                              onClick={() => handleUpdateOrderStatus(order._id, 'Shipped')}
+                              className="bg-purple-600 text-white hover:bg-purple-700 px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5"
+                            >
+                              🚀 Mark as Shipped
+                            </button>
+                          )}
+
+                          {currentStatus === 'Shipped' && (
+                            <button
+                              onClick={() => handleUpdateOrderStatus(order._id, 'Out for Delivery')}
+                              className="bg-amber-600 text-white hover:bg-amber-700 px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5"
+                            >
+                              🚚 Mark Out for Delivery
+                            </button>
+                          )}
+
+                          {currentStatus === 'Out for Delivery' && (
+                            <button
+                              onClick={() => handleUpdateOrderStatus(order._id, 'Delivered')}
+                              className="bg-emerald-600 text-white hover:bg-emerald-700 px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5"
+                            >
+                              🏠 Mark as Delivered
+                            </button>
+                          )}
+
+                          {currentStatus === 'Delivered' && (
+                            <span className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl">
+                              ⏳ Awaiting Customer Receipt Confirmation
+                            </span>
+                          )}
+
+                          {currentStatus === 'Customer Confirmed Received' && (
+                            <span className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 px-3 py-1.5 rounded-xl flex items-center gap-1">
+                              🎉 Customer Confirmed Order Received
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </div>
+
+        {/* ── My Purchases Section (Creator as Buyer) ──────────────────────── */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-8">
+          <div className="flex items-center gap-2 mb-1">
+            <h2 className="text-xl font-extrabold text-gray-900">🛒 My Purchases</h2>
+          </div>
+          <p className="text-gray-500 text-xs mb-5">Products you've bought from other creators. Confirm receipt once your order arrives.</p>
+
+          {myPurchases.length === 0 ? (
+            <div className="py-12 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+              <div className="text-4xl mb-3">🛍️</div>
+              <p className="text-gray-700 font-bold text-base mb-1">No purchases yet</p>
+              <p className="text-gray-400 text-xs">Browse the <a href="/marketplace" className="text-indigo-600 underline">Marketplace</a> to discover products.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {myPurchases.map(order => {
+                const currentStatus = order.orderStatus || order.status || 'Order Confirmed';
+                const statusColor =
+                  currentStatus === 'Customer Confirmed Received' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' :
+                  currentStatus === 'Delivered'                   ? 'bg-blue-100 text-blue-800 border border-blue-300' :
+                  currentStatus === 'Out for Delivery'            ? 'bg-cyan-100 text-cyan-800 border border-cyan-200' :
+                  currentStatus === 'Shipped'                     ? 'bg-indigo-100 text-indigo-800 border border-indigo-200' :
+                  currentStatus === 'Preparing'                   ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' :
+                  'bg-gray-100 text-gray-700 border border-gray-200';
+
+                return (
+                  <div key={order._id} className="border border-gray-100 rounded-xl p-5 hover:shadow-md transition">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                      <div>
+                        <span className="font-mono font-extrabold text-indigo-700 text-sm">#{order._id?.slice(-7).toUpperCase()}</span>
+                        <span className="text-gray-400 text-xs ml-3">{new Date(order.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                        {order.paymentStatus === 'paid' && (
+                          <span className="ml-2 px-2 py-0.5 text-[10px] font-bold rounded-full bg-green-100 text-green-700 border border-green-200">Payment: Paid</span>
+                        )}
+                      </div>
+                      <span className={`text-xs font-extrabold px-3 py-1.5 rounded-xl ${statusColor}`}>
+                        STATUS: {currentStatus.toUpperCase()}
+                      </span>
+                    </div>
+
+                    <div className="text-xs text-gray-500 mb-3">Seller: <span className="font-semibold text-gray-700">{order.creatorId?.name || 'Creator'}</span> ({order.creatorId?.email})</div>
+
+                    <div className="space-y-2 mb-4">
+                      {(order.items || []).map((item, i) => (
+                        <div key={i} className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-2">
+                          <div className="flex items-center gap-3">
+                            {item.itemId?.images?.[0]?.url ? (
+                              <img src={item.itemId.images[0].url} alt={item.itemId?.title} className="w-10 h-10 rounded-lg object-cover border flex-shrink-0" />
+                            ) : (
+                              <div className="w-10 h-10 rounded-lg bg-gray-200 flex items-center justify-center flex-shrink-0 text-lg">🛍️</div>
+                            )}
+                            <div>
+                              <div className="font-bold text-gray-900 text-sm">{item.itemId?.title || 'Product'}</div>
+                              <div className="text-xs text-gray-500">Qty: {item.quantity} × ₹{item.price}</div>
+                            </div>
+                          </div>
+                          <div className="font-bold text-gray-900 text-sm">₹{(item.quantity * item.price).toLocaleString('en-IN')}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="pt-3 border-t border-gray-100 flex items-center justify-between">
+                      <div className="font-extrabold text-gray-800 text-sm">Total: ₹{(order.totalAmount || 0).toLocaleString('en-IN')}</div>
+                      <div className="flex items-center gap-3">
+                        {currentStatus === 'Delivered' && !order.customerReceived && (
+                          <button
+                            onClick={() => handleConfirmPurchaseReceived(order._id)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm px-5 py-2 rounded-xl shadow-md transition flex items-center gap-2 transform hover:-translate-y-0.5"
+                          >
+                            <span>✓</span> Yes, I Received My Order
+                          </button>
+                        )}
+                        {(order.customerReceived || currentStatus === 'Customer Confirmed Received') && (
+                          <div className="bg-emerald-50 border border-emerald-300 text-emerald-800 font-extrabold text-xs px-4 py-2.5 rounded-xl flex items-center gap-2">
+                            <span>🎉</span> Order Received Confirmed {order.customerReceivedAt && `on ${new Date(order.customerReceivedAt).toLocaleDateString('en-IN')}`}
+                          </div>
+                        )}
+                        {!order.customerReceived && currentStatus !== 'Delivered' && currentStatus !== 'Customer Confirmed Received' && (
+                          <div className="text-xs text-gray-400 italic">"Confirm" button activates once Delivered.</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

@@ -18,7 +18,12 @@ import gameRoutes from './routes/gameRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import chatbotRoutes from './routes/chatbotRoutes.js';
 
+import http from 'http';
+import { initSocket } from './utils/socket.js';
+
 const app = express();
+const server = http.createServer(app);
+initSocket(server);
 
 // Middleware
 app.use(cors());
@@ -44,7 +49,7 @@ app.use('/api/chatbot', chatbotRoutes);
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/castncart';
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 

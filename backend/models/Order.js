@@ -10,7 +10,28 @@ const orderSchema = new mongoose.Schema({
     price: { type: Number, required: true },
   }],
   totalAmount: { type: Number, required: true },
-  status: { type: String, enum: ['pending', 'paid', 'shipped', 'completed', 'cancelled'], default: 'pending' },
+  paymentStatus: {
+    type: String,
+    enum: ['Pending', 'Paid', 'Failed'],
+    default: 'Paid',
+  },
+  orderStatus: {
+    type: String,
+    enum: [
+      'Order Confirmed',
+      'Preparing',
+      'Shipped',
+      'Out for Delivery',
+      'Delivered',
+      'Customer Confirmed Received',
+      'Cancelled',
+    ],
+    default: 'Order Confirmed',
+  },
+  // Legacy status for backwards compatibility
+  status: { type: String, default: 'Order Confirmed' },
+  customerReceived: { type: Boolean, default: false },
+  customerReceivedAt: { type: Date, default: null },
   // Razorpay payment details
   razorpayOrderId:   { type: String, default: null },
   razorpayPaymentId: { type: String, default: null },
@@ -20,6 +41,8 @@ const orderSchema = new mongoose.Schema({
 
 orderSchema.index({ creatorId: 1 });
 orderSchema.index({ buyerId: 1 });
+orderSchema.index({ razorpayPaymentId: 1 });
+orderSchema.index({ razorpayOrderId: 1 });
 
 const Order = mongoose.model('Order', orderSchema);
 export default Order;

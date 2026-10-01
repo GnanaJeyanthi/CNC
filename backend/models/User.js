@@ -3,9 +3,12 @@ import mongoose from 'mongoose';
 const userSchema = new mongoose.Schema({
   name:                 { type: String, required: true },
   email:                { type: String, required: true, unique: true },
-  password:             { type: String, required: true },
+  password:             { type: String },
   role:                 { type: String, enum: ['User', 'Creator', 'Admin'], required: true },
   phone:                { type: String },
+  // Google OAuth
+  googleId:             { type: String },
+  authProvider:         { type: String, enum: ['local', 'google'], default: 'local' },
   // Creator-specific
   expertise:            { type: String },
   portfolio:            { type: String },

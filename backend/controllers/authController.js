@@ -2,6 +2,10 @@ import User from '../models/User.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { cloudinary, uploadBufferToCloudinary } from '../config/cloudinary.js';
+import { OAuth2Client } from 'google-auth-library';
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
 
 const generateToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: '30d' });
@@ -191,5 +195,62 @@ export const deleteAccount = async (req, res) => {
     res.json({ message: 'Account deleted' });
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+};
+
+// ── Google OAuth Login ────────────────────────────────────────────────────────
+export const googleLogin = async (req, res) => {
+  try {
+    const { credential } = req.body;
+    if (!credential) {
+      return res.status(400).json({ message: 'Google credential is required' });
+    }
+
+    // Verify the Google ID token
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    const { sub: googleId, email, name, picture } = payload;
+
+    // Check if user already exists by googleId or email
+    let user = await User.findOne({ $or: [{ googleId }, { email }] });
+
+    if (user) {
+      // If user exists but registered locally, link Google account
+      if (!user.googleId) {
+        user.googleId = googleId;
+        user.authProvider = 'google';
+        if (!user.profilePhoto && picture) {
+          user.profilePhoto = picture;
+        }
+        await user.save();
+      }
+    } else {
+      // Create new user with Google info
+      user = await User.create({
+        name,
+        email,
+        googleId,
+        authProvider: 'google',
+        role: 'User',
+        profilePhoto: picture || '',
+      });
+    }
+
+    res.json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      token: generateToken(user._id, user.role),
+      profilePhoto: user.profilePhoto,
+      categories: user.categories || [],
+      authProvider: user.authProvider,
+    });
+  } catch (error) {
+    console.error('Google Login Error:', error);
+    res.status(500).json({ message: 'Google authentication failed' });
   }
 };
