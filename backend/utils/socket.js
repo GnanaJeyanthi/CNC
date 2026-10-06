@@ -7,8 +7,15 @@ let io = null;
 export const initSocket = (httpServer) => {
   io = new Server(httpServer, {
     cors: {
-      origin: '*', // Allow all origins for dev/prod flexibility
-      methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
+      origin: [
+        'https://castncart.netlify.app',
+        'http://localhost:5173',
+        'http://localhost:5000',
+        'http://127.0.0.1:5173',
+        'http://localhost:3000',
+      ],
+      credentials: true,
+      methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     },
   });
 
