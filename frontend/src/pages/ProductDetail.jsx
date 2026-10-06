@@ -93,7 +93,8 @@ export default function ProductDetail() {
   const [successModal, setSuccessModal] = useState(null); // { paymentId, productName, amount }
   const [failureModal, setFailureModal] = useState(null); // { message }
 
-  const API = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  const API = `${API_URL}/api`;
 
   // Fetch product details
   useEffect(() => {

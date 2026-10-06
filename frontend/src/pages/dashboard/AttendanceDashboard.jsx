@@ -27,12 +27,13 @@ export default function AttendanceDashboard() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [loading, setLoading]       = useState(false);
 
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const headers = { Authorization: `Bearer ${user?.token}` };
 
   // Fetch overall report
   useEffect(() => {
     if (!user) return;
-    axios.get('http://localhost:5000/api/attendance/report', { headers })
+    axios.get(`${API_URL}/api/attendance/report`, { headers })
       .then(r => setReport(r.data))
       .catch(console.error);
   }, [user]);
@@ -42,7 +43,7 @@ export default function AttendanceDashboard() {
     setLoading(true);
     try {
       const { data } = await axios.get(
-        `http://localhost:5000/api/attendance/workshops/${workshopId}/participants?status=${filterStatus}&search=${search}`,
+        `${API_URL}/api/attendance/workshops/${workshopId}/participants?status=${filterStatus}&search=${search}`,
         { headers }
       );
       setParticipants(data.participants);
@@ -66,7 +67,7 @@ export default function AttendanceDashboard() {
   const handleMarkStatus = async (userId, status) => {
     try {
       await axios.patch(
-        `http://localhost:5000/api/attendance/workshops/${selected.workshopId}/mark-status`,
+        `${API_URL}/api/attendance/workshops/${selected.workshopId}/mark-status`,
         { userId, status },
         { headers }
       );

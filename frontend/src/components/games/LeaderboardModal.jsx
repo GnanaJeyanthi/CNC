@@ -24,8 +24,9 @@ export default function LeaderboardModal({ isOpen, onClose, initialGame = 'queen
         const token = userInfo?.token;
         const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
         
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
         const res = await axios.get(
-          `http://localhost:5000/api/games/leaderboard/${activeGame}?type=${tabType}`,
+          `${API_URL}/api/games/leaderboard/${activeGame}?type=${tabType}`,
           config
         );
 

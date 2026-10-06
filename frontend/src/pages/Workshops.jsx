@@ -43,7 +43,8 @@ export default function Workshops() {
   const fetchWorkshops = async (cat = category, q = search) => {
     setLoading(true);
     try {
-      const { data } = await axios.get(`http://localhost:5000/api/workshops?search=${encodeURIComponent(q)}&category=${encodeURIComponent(cat)}`);
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const { data } = await axios.get(`${API_URL}/api/workshops?search=${encodeURIComponent(q)}&category=${encodeURIComponent(cat)}`);
       setWorkshops(data || []);
     } catch(err) {
       console.error("Error fetching workshops:", err);

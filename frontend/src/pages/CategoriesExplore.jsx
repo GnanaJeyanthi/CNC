@@ -141,9 +141,10 @@ export default function CategoriesExplore() {
   useEffect(() => {
     const fetchCategoryCounts = async () => {
       try {
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
         const [wRes, pRes] = await Promise.all([
-          axios.get('http://localhost:5000/api/workshops'),
-          axios.get('http://localhost:5000/api/products'),
+          axios.get(`${API_URL}/api/workshops`),
+          axios.get(`${API_URL}/api/products`),
         ]);
         const workshops = wRes.data || [];
         const products = pRes.data || [];

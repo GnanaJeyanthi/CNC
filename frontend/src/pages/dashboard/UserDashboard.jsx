@@ -49,11 +49,12 @@ const UserDashboard = () => {
   const [attendance, setAttendance] = useState([]);
   const [orders, setOrders] = useState([]);
 
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const headers = { Authorization: `Bearer ${user?.token}` };
 
   const fetchMyOrders = () => {
     if (!user) return;
-    axios.get('http://localhost:5000/api/orders/my-orders', { headers })
+    axios.get(`${API_URL}/api/orders/my-orders`, { headers })
       .then(r => setOrders(r.data))
       .catch(console.error);
   };
@@ -61,14 +62,14 @@ const UserDashboard = () => {
   useEffect(() => {
     if (!user) return;
     // Always fetch overview data
-    axios.get('http://localhost:5000/api/analytics/user', { headers })
+    axios.get(`${API_URL}/api/analytics/user`, { headers })
       .then(r => setData(r.data))
       .catch(console.error);
   }, [user]);
 
   useEffect(() => {
     if (!user || activeTab !== 'Attendance History') return;
-    axios.get('http://localhost:5000/api/attendance/my-history', { headers })
+    axios.get(`${API_URL}/api/attendance/my-history`, { headers })
       .then(r => setAttendance(r.data))
       .catch(console.error);
   }, [user, activeTab]);
@@ -97,7 +98,7 @@ const UserDashboard = () => {
   const handleConfirmReceived = async (orderId) => {
     try {
       const { data: res } = await axios.post(
-        `http://localhost:5000/api/orders/${orderId}/confirm-received`,
+        `${API_URL}/api/orders/${orderId}/confirm-received`,
         {},
         { headers }
       );
@@ -109,8 +110,8 @@ const UserDashboard = () => {
 
   const handleJoin = async (id) => {
     try {
-      await axios.post(`http://localhost:5000/api/workshops/${id}/join`, {}, { headers });
-      const res = await axios.get('http://localhost:5000/api/analytics/user', { headers });
+      await axios.post(`${API_URL}/api/workshops/${id}/join`, {}, { headers });
+      const res = await axios.get(`${API_URL}/api/analytics/user`, { headers });
       setData(res.data);
     } catch (err) {
       alert(err.response?.data?.message || 'Error joining workshop');
@@ -119,7 +120,7 @@ const UserDashboard = () => {
 
   const handleJoinLive = async (workshop) => {
     try {
-      await axios.post(`http://localhost:5000/api/attendance/workshops/${workshop._id}/join-session`, {}, { headers });
+      await axios.post(`${API_URL}/api/attendance/workshops/${workshop._id}/join-session`, {}, { headers });
     } catch (e) { /* non-critical */ }
     const liveUrl = workshop.ngrokUrl 
       ? (workshop.ngrokUrl.startsWith('http') ? workshop.ngrokUrl : `https://${workshop.ngrokUrl}`)

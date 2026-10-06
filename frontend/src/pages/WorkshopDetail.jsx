@@ -6,7 +6,8 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import StarRating from '../components/StarRating';
 
-const API = 'http://localhost:5000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API = `${API_URL}/api`;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function formatDate(d) {

@@ -54,7 +54,8 @@ export default function UserAnalytics() {
 
   useEffect(() => {
     if (!user) return;
-    axios.get('http://localhost:5000/api/analytics/user/stats', {
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+    axios.get(`${API_URL}/api/analytics/user/stats`, {
       headers: { Authorization: `Bearer ${user.token}` }
     }).then(r => { setData(r.data); setLoading(false); })
       .catch(e => { console.error(e); setLoading(false); });

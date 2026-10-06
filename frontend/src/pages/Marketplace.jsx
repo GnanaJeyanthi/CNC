@@ -50,7 +50,8 @@ export default function Marketplace() {
   const fetchProducts = async () => {
     setLoading(true);
     try {
-      const { data } = await axios.get(`http://localhost:5000/api/products?search=${encodeURIComponent(search)}&category=${encodeURIComponent(category)}`);
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const { data } = await axios.get(`${API_URL}/api/products?search=${encodeURIComponent(search)}&category=${encodeURIComponent(category)}`);
       setProducts(data || []);
     } catch(err) {
       console.error("Error fetching products:", err);

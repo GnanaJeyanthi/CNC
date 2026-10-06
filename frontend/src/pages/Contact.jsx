@@ -90,7 +90,8 @@ export default function ContactPage({ isComponent = false }) {
     setErrorMsg('');
 
     try {
-      const res = await axios.post('http://localhost:5000/api/contact', formData);
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const res = await axios.post(`${API_URL}/api/contact`, formData);
       if (res.data && res.data.success) {
         setSuccessMsg('Thank you! Your message has been sent successfully. Our team will get back to you shortly.');
         setFormData({

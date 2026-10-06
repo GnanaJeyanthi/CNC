@@ -8,7 +8,8 @@ import {
   Camera, Save, AlertTriangle, CheckCircle, Eye, EyeOff, Trash2, BookOpen, Star,
 } from 'lucide-react';
 
-const API = 'http://localhost:5000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API = `${API_URL}/api`;
 
 const TABS = [
   { id: 'profile',   label: 'Profile',          icon: User },

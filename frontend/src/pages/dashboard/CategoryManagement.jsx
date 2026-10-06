@@ -57,15 +57,16 @@ const CategoryManagement = () => {
 
   // Fetch creator's products & workshops to display linkage
   useEffect(() => {
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
     const fetchCreatorContent = async () => {
       if (user && user._id) {
         setLoadingContent(true);
         try {
           const [productsRes, workshopsRes] = await Promise.all([
-            axios.get(`http://localhost:5000/api/products/creator/${user._id}`, {
+            axios.get(`${API_URL}/api/products/creator/${user._id}`, {
               headers: { Authorization: `Bearer ${user.token}` }
             }),
-            axios.get(`http://localhost:5000/api/workshops/creator/${user._id}`, {
+            axios.get(`${API_URL}/api/workshops/creator/${user._id}`, {
               headers: { Authorization: `Bearer ${user.token}` }
             })
           ]);
@@ -130,8 +131,9 @@ const CategoryManagement = () => {
     setSaving(true);
     setSaveSuccess(false);
     try {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
       const res = await axios.put(
-        'http://localhost:5000/api/auth/categories',
+        `${API_URL}/api/auth/categories`,
         { categories: selectedCategories },
         { headers: { Authorization: `Bearer ${user.token}` } }
       );

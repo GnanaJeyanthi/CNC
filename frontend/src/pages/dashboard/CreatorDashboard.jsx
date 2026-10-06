@@ -43,12 +43,13 @@ const CreatorDashboard = () => {
   const [activeWorkshop, setActiveWorkshop] = useState(null);
   const [materialForm, setMaterialForm] = useState({ title: '', file: null });
   const [recordingFile, setRecordingFile] = useState(null);
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
   useEffect(() => {
     const fetchAnalytics = async () => {
       if (user && user._id) {
         try {
-          const { data } = await axios.get(`http://localhost:5000/api/analytics/creator/${user._id}`, {
+          const { data } = await axios.get(`${API_URL}/api/analytics/creator/${user._id}`, {
             headers: { Authorization: `Bearer ${user.token}` }
           });
           
@@ -73,7 +74,7 @@ const CreatorDashboard = () => {
     const fetchProducts = async () => {
       if (user && user._id) {
         try {
-          const { data } = await axios.get(`http://localhost:5000/api/products/creator/${user._id}`, {
+          const { data } = await axios.get(`${API_URL}/api/products/creator/${user._id}`, {
             headers: { Authorization: `Bearer ${user.token}` }
           });
           setMyProducts(data.products || []);
@@ -84,7 +85,7 @@ const CreatorDashboard = () => {
     const fetchWorkshops = async () => {
       if (user && user._id) {
         try {
-          const { data } = await axios.get(`http://localhost:5000/api/workshops/creator/${user._id}`, {
+          const { data } = await axios.get(`${API_URL}/api/workshops/creator/${user._id}`, {
             headers: { Authorization: `Bearer ${user.token}` }
           });
           setMyWorkshops(data.workshops || []);
@@ -95,7 +96,7 @@ const CreatorDashboard = () => {
     const fetchCreatorOrders = async () => {
       if (user && user._id) {
         try {
-          const { data } = await axios.get(`http://localhost:5000/api/orders/creator/${user._id}`, {
+          const { data } = await axios.get(`${API_URL}/api/orders/creator/${user._id}`, {
             headers: { Authorization: `Bearer ${user.token}` }
           });
           const orderList = Array.isArray(data) ? data : (data.orders || []);
@@ -107,7 +108,7 @@ const CreatorDashboard = () => {
     const fetchMyPurchases = async () => {
       if (user) {
         try {
-          const { data } = await axios.get('http://localhost:5000/api/orders/my-orders', {
+          const { data } = await axios.get(`${API_URL}/api/orders/my-orders`, {
             headers: { Authorization: `Bearer ${user.token}` }
           });
           setMyPurchases(Array.isArray(data) ? data : []);
@@ -127,7 +128,7 @@ const CreatorDashboard = () => {
     if (!socket || !user) return;
     const handleOrderChange = () => {
       if (user && user._id) {
-        axios.get(`http://localhost:5000/api/orders/creator/${user._id}`, {
+        axios.get(`${API_URL}/api/orders/creator/${user._id}`, {
           headers: { Authorization: `Bearer ${user.token}` }
         }).then(r => {
           const orderList = Array.isArray(r.data) ? r.data : (r.data.orders || []);
@@ -148,7 +149,7 @@ const CreatorDashboard = () => {
   const handleConfirmPurchaseReceived = async (orderId) => {
     try {
       const { data: res } = await axios.post(
-        `http://localhost:5000/api/orders/${orderId}/confirm-received`,
+        `${API_URL}/api/orders/${orderId}/confirm-received`,
         {},
         { headers: { Authorization: `Bearer ${user.token}` } }
       );
@@ -161,7 +162,7 @@ const CreatorDashboard = () => {
   const handleUpdateOrderStatus = async (orderId, nextStatus) => {
     try {
       const { data } = await axios.patch(
-        `http://localhost:5000/api/orders/${orderId}/status`,
+        `${API_URL}/api/orders/${orderId}/status`,
         { status: nextStatus },
         { headers: { Authorization: `Bearer ${user.token}` } }
       );
@@ -193,7 +194,7 @@ const CreatorDashboard = () => {
 
   const handleGoLive = async (workshop) => {
     try {
-      const res = await axios.post(`http://localhost:5000/api/workshops/${workshop._id}/start`, {}, {
+      const res = await axios.post(`${API_URL}/api/workshops/${workshop._id}/start`, {}, {
         headers: { Authorization: `Bearer ${user.token}` }
       });
       let targetUrl = res.data.ngrokUrl || res.data.jitsiUrl || res.data.liveLink;
@@ -229,7 +230,7 @@ const CreatorDashboard = () => {
     }
     if(classForm.thumbnail) formData.append('thumbnail', classForm.thumbnail);
     try {
-      await axios.post('http://localhost:5000/api/workshops', formData, {
+      await axios.post(`${API_URL}/api/workshops`, formData, {
         headers: { Authorization: `Bearer ${user.token}` }
       });
       alert('Class created!');
@@ -258,12 +259,12 @@ const CreatorDashboard = () => {
     }
     try {
       if (editingProduct) {
-        await axios.put(`http://localhost:5000/api/products/${editingProduct._id}`, formData, {
+        await axios.put(`${API_URL}/api/products/${editingProduct._id}`, formData, {
           headers: { Authorization: `Bearer ${user.token}` }
         });
         alert('Product updated!');
       } else {
-        await axios.post('http://localhost:5000/api/products', formData, {
+        await axios.post(`${API_URL}/api/products`, formData, {
           headers: { Authorization: `Bearer ${user.token}` }
         });
         alert('Product created!');
@@ -279,7 +280,7 @@ const CreatorDashboard = () => {
   const handleDeleteProduct = async (id) => {
     if(!window.confirm('Are you sure you want to delete this product?')) return;
     try {
-      await axios.delete(`http://localhost:5000/api/products/${id}`, {
+      await axios.delete(`${API_URL}/api/products/${id}`, {
         headers: { Authorization: `Bearer ${user.token}` }
       });
       setMyProducts(myProducts.filter(p => p._id !== id));
@@ -309,7 +310,7 @@ const CreatorDashboard = () => {
     const formData = new FormData();
     formData.append('recording', recordingFile);
     try {
-      await axios.post(`http://localhost:5000/api/workshops/${activeWorkshop._id}/recording`, formData, {
+      await axios.post(`${API_URL}/api/workshops/${activeWorkshop._id}/recording`, formData, {
         headers: { Authorization: `Bearer ${user.token}` }
       });
       alert('Recording uploaded!');
@@ -324,7 +325,7 @@ const CreatorDashboard = () => {
     formData.append('title', materialForm.title);
     formData.append('file', materialForm.file);
     try {
-      await axios.post(`http://localhost:5000/api/workshops/${activeWorkshop._id}/materials`, formData, {
+      await axios.post(`${API_URL}/api/workshops/${activeWorkshop._id}/materials`, formData, {
         headers: { Authorization: `Bearer ${user.token}` }
       });
       alert('Material uploaded!');

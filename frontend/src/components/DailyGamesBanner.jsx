@@ -39,7 +39,8 @@ export default function DailyGamesBanner({ onOpenGame, onOpenLeaderboard }) {
         const token = userInfo?.token;
         if (!token) return;
 
-        const res = await axios.get('http://localhost:5000/api/games/status', {
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+        const res = await axios.get(`${API_URL}/api/games/status`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 

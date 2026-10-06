@@ -33,13 +33,15 @@ export default function DailyGames() {
     }
   }, [searchParams]);
 
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
   const fetchGameStatus = async () => {
     try {
       const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
       const token = userInfo?.token;
       if (!token) return;
 
-      const res = await axios.get('http://localhost:5000/api/games/status', {
+      const res = await axios.get(`${API_URL}/api/games/status`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -96,7 +98,7 @@ export default function DailyGames() {
       if (!token) return;
 
       const res = await axios.post(
-        'http://localhost:5000/api/games/complete',
+        `${API_URL}/api/games/complete`,
         {
           gameId,
           date: getTodayDateStr(),
